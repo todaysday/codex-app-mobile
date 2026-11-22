@@ -39,6 +39,15 @@ extension SessionWorkbenchView {
 
             Menu {
                 if let selectedThreadSummary {
+                    if !self.isSSHTransport {
+                        Button { self.presentOfficialThreadPanel(.controls) } label: {
+                            Label("Goal and Thread Controls", systemImage: "slider.horizontal.3")
+                        }
+                        Button { self.presentOfficialThreadPanel(.subagents) } label: {
+                            Label("Subagents", systemImage: "person.crop.rectangle.stack")
+                        }
+                        Divider()
+                    }
                     Button {
                         self.reloadThread(summary: selectedThreadSummary)
                     } label: {

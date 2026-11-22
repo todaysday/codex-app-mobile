@@ -445,6 +445,7 @@ final class HostSessionStore: ObservableObject {
 final class AppState: ObservableObject {
     @Published var selectedHostID: UUID?
     @Published var terminalLaunchContext: TerminalLaunchContext?
+    @Published var composerDraftStore = CodexComposerDraftStore()
 
     let remoteHostStore: RemoteHostStore
     let projectStore: ProjectStore

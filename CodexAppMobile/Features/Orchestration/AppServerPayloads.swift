@@ -2,6 +2,29 @@ import Foundation
 
 struct ThreadListResponsePayload: Decodable {
     let data: [ThreadListEntryPayload]
+    let nextCursor: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case data, nextCursor
+        case nextCursorSnake = "next_cursor"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.data = try container.decode([ThreadListEntryPayload].self, forKey: .data)
+        self.nextCursor = try container.decodeIfPresent(String.self, forKey: .nextCursor)
+            ?? container.decodeIfPresent(String.self, forKey: .nextCursorSnake)
+    }
+}
+
+struct ThreadLoadedListResponsePayload: Decodable {
+    let data: [String]
+    let nextCursor: String?
+}
+
+struct ThreadTurnsListResponsePayload: Decodable {
+    let data: [ThreadReadTurnPayload]
+    let nextCursor: String?
 }
 
 struct ModelListResponsePayload: Decodable {
@@ -31,6 +54,11 @@ struct ModelListEntryPayload: Decodable {
     let isDefault: Bool
     let upgradeInfo: ModelUpgradeInfoPayload?
     let availabilityNuxMessage: String?
+    let description: String?
+    let inputModalities: [String]
+    let multiAgentVersion: String?
+    let serviceTiers: [AppServerModelServiceTier]
+    let defaultServiceTier: String?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -48,6 +76,7 @@ struct ModelListEntryPayload: Decodable {
         case upgradeInfoSnake = "upgrade_info"
         case availabilityNux
         case availabilityNuxSnake = "availability_nux"
+        case description, inputModalities, multiAgentVersion, serviceTiers, defaultServiceTier
     }
 
     init(from decoder: Decoder) throws {
@@ -69,6 +98,11 @@ struct ModelListEntryPayload: Decodable {
         let availabilityNux = try container.decodeIfPresent(ModelAvailabilityNuxPayload.self, forKey: .availabilityNux)
             ?? container.decodeIfPresent(ModelAvailabilityNuxPayload.self, forKey: .availabilityNuxSnake)
         self.availabilityNuxMessage = availabilityNux?.message
+        self.description = try container.decodeIfPresent(String.self, forKey: .description)
+        self.inputModalities = try container.decodeIfPresent([String].self, forKey: .inputModalities) ?? []
+        self.multiAgentVersion = try container.decodeIfPresent(String.self, forKey: .multiAgentVersion)
+        self.serviceTiers = try container.decodeIfPresent([AppServerModelServiceTier].self, forKey: .serviceTiers) ?? []
+        self.defaultServiceTier = try container.decodeIfPresent(String.self, forKey: .defaultServiceTier)
     }
 
     private static func decodeReasoningEffortOptions(
@@ -161,6 +195,15 @@ struct ThreadListEntryPayload: Decodable {
     let ephemeral: Bool
     let model: String?
     let reasoningEffort: String?
+    let name: String?
+    let parentThreadID: String?
+    let forkedFromID: String?
+    let agentNickname: String?
+    let agentRole: String?
+    let status: AppServerThreadStatus?
+    let canAcceptDirectInput: Bool?
+    let historyMode: String?
+    let source: JSONValue?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -172,6 +215,9 @@ struct ThreadListEntryPayload: Decodable {
         case reasoningEffort
         case reasoningEffortSnake = "reasoning_effort"
         case effort
+        case name, agentNickname, agentRole, status, canAcceptDirectInput, historyMode, source
+        case parentThreadID = "parentThreadId"
+        case forkedFromID = "forkedFromId"
     }
 
     init(from decoder: Decoder) throws {
@@ -185,6 +231,15 @@ struct ThreadListEntryPayload: Decodable {
         self.reasoningEffort = try container.decodeIfPresent(String.self, forKey: .reasoningEffort)
             ?? container.decodeIfPresent(String.self, forKey: .reasoningEffortSnake)
             ?? container.decodeIfPresent(String.self, forKey: .effort)
+        self.name = try container.decodeIfPresent(String.self, forKey: .name)
+        self.parentThreadID = try container.decodeIfPresent(String.self, forKey: .parentThreadID)
+        self.forkedFromID = try container.decodeIfPresent(String.self, forKey: .forkedFromID)
+        self.agentNickname = try container.decodeIfPresent(String.self, forKey: .agentNickname)
+        self.agentRole = try container.decodeIfPresent(String.self, forKey: .agentRole)
+        self.status = try container.decodeIfPresent(AppServerThreadStatus.self, forKey: .status)
+        self.canAcceptDirectInput = try container.decodeIfPresent(Bool.self, forKey: .canAcceptDirectInput)
+        self.historyMode = try container.decodeIfPresent(String.self, forKey: .historyMode)
+        self.source = try container.decodeIfPresent(JSONValue.self, forKey: .source)
     }
 }
 
@@ -264,10 +319,22 @@ struct ThreadResumeResponsePayload: Decodable {
 
 struct ThreadReadThreadPayload: Decodable {
     let id: String
-    let turns: [ThreadReadTurnPayload]
+    var turns: [ThreadReadTurnPayload]
     let ephemeral: Bool
     let model: String?
     let reasoningEffort: String?
+    let preview: String?
+    let updatedAt: Int?
+    let cwd: String?
+    let name: String?
+    let parentThreadID: String?
+    let forkedFromID: String?
+    let agentNickname: String?
+    let agentRole: String?
+    let status: AppServerThreadStatus?
+    let canAcceptDirectInput: Bool?
+    let historyMode: String?
+    let source: JSONValue?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -277,6 +344,9 @@ struct ThreadReadThreadPayload: Decodable {
         case reasoningEffort
         case reasoningEffortSnake = "reasoning_effort"
         case effort
+        case preview, updatedAt, cwd, name, agentNickname, agentRole, status, canAcceptDirectInput, historyMode, source
+        case parentThreadID = "parentThreadId"
+        case forkedFromID = "forkedFromId"
     }
 
     init(from decoder: Decoder) throws {
@@ -288,6 +358,18 @@ struct ThreadReadThreadPayload: Decodable {
         self.reasoningEffort = try container.decodeIfPresent(String.self, forKey: .reasoningEffort)
             ?? container.decodeIfPresent(String.self, forKey: .reasoningEffortSnake)
             ?? container.decodeIfPresent(String.self, forKey: .effort)
+        self.preview = try container.decodeIfPresent(String.self, forKey: .preview)
+        self.updatedAt = try container.decodeIfPresent(Int.self, forKey: .updatedAt)
+        self.cwd = try container.decodeIfPresent(String.self, forKey: .cwd)
+        self.name = try container.decodeIfPresent(String.self, forKey: .name)
+        self.parentThreadID = try container.decodeIfPresent(String.self, forKey: .parentThreadID)
+        self.forkedFromID = try container.decodeIfPresent(String.self, forKey: .forkedFromID)
+        self.agentNickname = try container.decodeIfPresent(String.self, forKey: .agentNickname)
+        self.agentRole = try container.decodeIfPresent(String.self, forKey: .agentRole)
+        self.status = try container.decodeIfPresent(AppServerThreadStatus.self, forKey: .status)
+        self.canAcceptDirectInput = try container.decodeIfPresent(Bool.self, forKey: .canAcceptDirectInput)
+        self.historyMode = try container.decodeIfPresent(String.self, forKey: .historyMode)
+        self.source = try container.decodeIfPresent(JSONValue.self, forKey: .source)
     }
 }
 
@@ -297,6 +379,7 @@ struct ThreadReadTurnPayload: Decodable {
     let items: [ThreadReadItemPayload]
     let model: String?
     let reasoningEffort: String?
+    let itemsView: String?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -306,6 +389,7 @@ struct ThreadReadTurnPayload: Decodable {
         case reasoningEffort
         case reasoningEffortSnake = "reasoning_effort"
         case effort
+        case itemsView
     }
 
     init(from decoder: Decoder) throws {
@@ -317,6 +401,7 @@ struct ThreadReadTurnPayload: Decodable {
         self.reasoningEffort = try container.decodeIfPresent(String.self, forKey: .reasoningEffort)
             ?? container.decodeIfPresent(String.self, forKey: .reasoningEffortSnake)
             ?? container.decodeIfPresent(String.self, forKey: .effort)
+        self.itemsView = try container.decodeIfPresent(String.self, forKey: .itemsView)
     }
 }
 

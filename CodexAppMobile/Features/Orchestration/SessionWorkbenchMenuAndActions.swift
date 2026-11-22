@@ -3,6 +3,47 @@ import SwiftUI
 import Textual
 
 extension SessionWorkbenchView {
+    func syncOfficialThreadMetadata() {
+        let record = self.selectedThreadID.flatMap { self.appState.appServerClient.threadRecordsByID[$0] }
+        self.selectedThreadDirectInputAllowed = self.isSSHTransport
+            || CodexThreadControlPolicy.acceptsDirectInput(record?.canAcceptDirectInput)
+        self.confirmedThreadName = self.selectedThreadID.flatMap { self.appState.appServerClient.threadNamesByID[$0] }
+            ?? record?.name
+    }
+
+    func presentOfficialThreadPanel(_ kind: OfficialThreadPanel.Kind) {
+        guard !self.isSSHTransport, let selectedThreadID else { return }
+        self.isPromptFieldFocused = false
+        self.officialThreadPanel = OfficialThreadPanel(kind: kind, threadID: selectedThreadID,
+                                                       title: self.selectedThreadTitle, modelID: self.composerModelForRequest)
+    }
+
+    func applyingOfficialControls<Content: View>(to content: Content) -> some View {
+        content
+            .onReceive(self.appState.appServerClient.$threadRecordsByID) { records in
+                let record = self.selectedThreadID.flatMap { records[$0] }
+                self.selectedThreadDirectInputAllowed = self.isSSHTransport
+                    || CodexThreadControlPolicy.acceptsDirectInput(record?.canAcceptDirectInput)
+                self.confirmedThreadName = self.selectedThreadID.flatMap { self.appState.appServerClient.threadNamesByID[$0] }
+                    ?? record?.name
+            }
+            .onReceive(self.appState.appServerClient.$threadNamesByID) { names in
+                self.confirmedThreadName = self.selectedThreadID.flatMap { names[$0] }
+                    ?? self.selectedThreadID.flatMap { self.appState.appServerClient.threadRecordsByID[$0]?.name }
+            }
+            .sheet(item: self.$officialThreadPanel) { panel in
+                switch panel.kind {
+                case .controls:
+                    CodexThreadControlsView(client: self.appState.appServerClient, threadID: panel.threadID,
+                                            modelID: panel.modelID, fallbackTitle: panel.title) {
+                        if self.selectedThreadID == panel.threadID { self.refreshParsedChatMessagesIfNeeded() }
+                    }
+                case .subagents:
+                    CodexSubagentsView(client: self.appState.appServerClient, rootThreadID: panel.threadID, rootTitle: panel.title)
+                }
+            }
+    }
+
     var sideMenu: some View {
         GeometryReader { proxy in
             VStack(spacing: 12) {

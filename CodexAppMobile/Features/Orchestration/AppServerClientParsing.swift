@@ -74,7 +74,12 @@ extension AppServerClient {
                             migrationMarkdown: Self.nonEmpty(info.migrationMarkdown)
                         )
                     },
-                    availabilityNuxMessage: Self.nonEmpty(entry.availabilityNuxMessage)
+                    availabilityNuxMessage: Self.nonEmpty(entry.availabilityNuxMessage),
+                    description: Self.nonEmpty(entry.description),
+                    inputModalities: entry.inputModalities,
+                    multiAgentVersion: Self.nonEmpty(entry.multiAgentVersion),
+                    serviceTiers: entry.serviceTiers,
+                    defaultServiceTier: Self.nonEmpty(entry.defaultServiceTier)
                 )
             )
         }
@@ -645,6 +650,77 @@ extension AppServerClient {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    static func isUnsupportedSourceKinds(_ error: Error) -> Bool {
+        guard case let AppServerClientError.remote(code, message) = error,
+              code == -32602 else { return false }
+        let message = message.lowercased()
+        return message.contains("sourcekinds") || message.contains("source_kinds")
+            || message.contains("source kinds") || Self.allThreadSourceKinds.contains(where: { kind in
+                ["`", "\"", "'"].contains(where: { quote in
+                    message.contains("unknown variant \(quote)\(kind.lowercased())\(quote)")
+                })
+            })
+    }
+
+    static func threadRecord(_ thread: ThreadListEntryPayload, archived: Bool) -> RemoteThreadRecord {
+        RemoteThreadRecord(
+            id: thread.id, preview: thread.preview,
+            updatedAt: Date(timeIntervalSince1970: TimeInterval(thread.updatedAt)), archived: archived,
+            ephemeral: thread.ephemeral, cwd: thread.cwd, model: Self.nonEmpty(thread.model),
+            reasoningEffort: Self.normalizedReasoningEffort(thread.reasoningEffort), name: thread.name,
+            parentThreadID: thread.parentThreadID, forkedFromID: thread.forkedFromID,
+            agentNickname: thread.agentNickname, agentRole: thread.agentRole, status: thread.status,
+            canAcceptDirectInput: thread.canAcceptDirectInput, historyMode: thread.historyMode, source: thread.source
+        )
+    }
+
+    static func threadRecord(_ thread: ThreadReadThreadPayload, existing: RemoteThreadRecord?,
+                             model: String? = nil, effort: String? = nil) -> RemoteThreadRecord {
+        RemoteThreadRecord(
+            id: thread.id, preview: thread.preview ?? existing?.preview ?? "",
+            updatedAt: thread.updatedAt.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+                ?? existing?.updatedAt ?? .distantPast,
+            archived: existing?.archived ?? false, ephemeral: thread.ephemeral,
+            cwd: thread.cwd ?? existing?.cwd ?? "", model: Self.nonEmpty(model ?? thread.model) ?? existing?.model,
+            reasoningEffort: Self.normalizedReasoningEffort(effort ?? thread.reasoningEffort) ?? existing?.reasoningEffort,
+            name: thread.name ?? existing?.name, parentThreadID: thread.parentThreadID ?? existing?.parentThreadID,
+            forkedFromID: thread.forkedFromID ?? existing?.forkedFromID,
+            agentNickname: thread.agentNickname ?? existing?.agentNickname, agentRole: thread.agentRole ?? existing?.agentRole,
+            status: thread.status ?? existing?.status,
+            canAcceptDirectInput: thread.canAcceptDirectInput ?? existing?.canAcceptDirectInput,
+            historyMode: thread.historyMode ?? existing?.historyMode, source: thread.source ?? existing?.source
+        )
+    }
+
+    static func parseContextUsage(_ params: [String: JSONValue], updatedAt: Date = Date()) -> AppServerContextUsageSummary {
+        let usage = params["tokenUsage"]?.objectValue ?? params
+        func breakdown(_ raw: JSONValue?) -> AppServerTokenUsageBreakdown? {
+            guard let values = raw?.objectValue else { return nil }
+            return AppServerTokenUsageBreakdown(
+                totalTokens: values["totalTokens"]?.intValue, inputTokens: values["inputTokens"]?.intValue,
+                cachedInputTokens: values["cachedInputTokens"]?.intValue,
+                cacheWriteInputTokens: values["cacheWriteInputTokens"]?.intValue,
+                outputTokens: values["outputTokens"]?.intValue,
+                reasoningOutputTokens: values["reasoningOutputTokens"]?.intValue
+            )
+        }
+        let last = breakdown(usage["last"])
+        let total = breakdown(usage["total"])
+        if usage["last"] != nil || usage["total"] != nil {
+            return AppServerContextUsageSummary(
+                usedTokens: last?.totalTokens, maxTokens: usage["modelContextWindow"]?.intValue,
+                remainingTokens: nil, updatedAt: updatedAt, lastUsage: last, totalUsage: total
+            )
+        }
+        // Retain the former flat payload contract for older app servers.
+        return AppServerContextUsageSummary(
+            usedTokens: Self.findInt(in: usage, paths: [["inputTokens"], ["usedTokens"], ["usedInputTokens"], ["usage", "used"]]),
+            maxTokens: Self.findInt(in: usage, paths: [["maxInputTokens"], ["contextWindow", "maxTokens"], ["limit"], ["maxTokens"], ["usage", "limit"]]),
+            remainingTokens: Self.findInt(in: usage, paths: [["remainingInputTokens"], ["contextWindow", "remainingTokens"], ["remainingTokens"], ["remaining"], ["usage", "remaining"]]),
+            updatedAt: updatedAt
+        )
+    }
+
     static func normalizedReasoningEffort(_ raw: String?) -> String? {
         guard let raw = Self.nonEmpty(raw) else { return nil }
         return raw.lowercased()
@@ -898,8 +974,10 @@ extension AppServerClient {
                 return .compatibility
             case .invalidURL, .invalidEndpointHost, .notConnected, .timeout:
                 return .connection
-            case .malformedResponse, .unsupportedMessage:
+            case .malformedResponse, .unsupportedMessage, .invalidThreadFilters, .incompleteHistory:
                 return .protocolError
+            case .readOnlyThread:
+                return .permission
             case .remote(let code, let message):
                 return Self.errorCategoryFromRemote(code: code, message: message)
             }

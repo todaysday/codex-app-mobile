@@ -1031,15 +1031,16 @@ extension SessionWorkbenchView {
     }
 
     func statusContextSummary(_ snapshot: StatusPanelSnapshot) -> String {
-        guard let used = snapshot.contextUsedTokens,
-              let max = snapshot.contextMaxTokens,
-              max > 0 else {
+        guard let used = snapshot.contextUsedTokens else {
             return L10n.text("Unavailable")
         }
         let usedText = self.groupedTokenCount(used)
+        guard let max = snapshot.contextMaxTokens, max > 0 else {
+            return L10n.format("%@ tokens used; window not reported", usedText)
+        }
         let maxText = self.compactTokenCount(max)
         if let remainingPercent = snapshot.contextRemainingPercent {
-            return L10n.format("%@%% left (%@ used / %@)", "\(Int(remainingPercent.rounded()))", usedText, maxText)
+            return L10n.format("Approximately %@%% left (%@ used / %@)", "\(Int(remainingPercent.rounded()))", usedText, maxText)
         }
         return L10n.format("%@ used / %@", usedText, maxText)
     }
@@ -1195,6 +1196,11 @@ extension SessionWorkbenchView {
 
         return VStack(alignment: .leading, spacing: 8) {
             self.composerControlBar
+
+            if !self.selectedThreadDirectInputAllowed {
+                Label("Read-only thread · direct input is disabled by the server", systemImage: "eye")
+                    .font(.caption).foregroundStyle(Color.white.opacity(0.75)).padding(.horizontal, 4)
+            }
 
             if let descriptor = self.selectedComposerModelDescriptor {
                 if let upgradeInfo = descriptor.upgradeInfo {

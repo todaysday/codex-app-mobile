@@ -107,6 +107,8 @@ extension SessionWorkbenchView {
         self.isRefreshingThreads = true
 
         let workspaceSnapshot = selectedWorkspace
+        let hostSnapshot = self.host
+        let scopeSnapshot = self.composerScope
         self.refreshThreadsTask = Task { @MainActor in
             defer {
                 if !Task.isCancelled {
@@ -134,18 +136,23 @@ extension SessionWorkbenchView {
             }
 
             do {
-                if self.appState.appServerClient.state != .connected {
+                if !self.appState.appServerClient.isConnected(to: hostSnapshot.id) {
                     // If auto-reconnect is in progress, skip this refresh.
                     // onChange(of: state) will re-trigger when connected.
                     if self.appState.appServerClient.isConnectionTransient {
                         return
                     }
-                    try await self.appState.appServerClient.connect(to: self.host)
+                    try await self.appState.appServerClient.connect(to: hostSnapshot)
                 }
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, self.appState.appServerClient.isConnected(to: hostSnapshot.id) else { return }
+                let generation = self.appState.appServerClient.connectionGeneration
 
                 let fetched = try await self.appState.appServerClient.threadList(archived: false, limit: 300)
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled,
+                      generation == self.appState.appServerClient.connectionGeneration,
+                      self.appState.appServerClient.isConnected(to: hostSnapshot.id),
+                      self.composerScope == scopeSnapshot,
+                      self.isComposerViewVisible else { return }
                 let scoped = fetched.filter {
                     Self.isThreadPath($0.cwd, inWorkspacePath: workspaceSnapshot.remotePath)
                 }
@@ -158,9 +165,9 @@ extension SessionWorkbenchView {
                     let existing = existingByThreadID[thread.id]
                     return CodexThreadSummary(
                         threadID: thread.id,
-                        hostID: self.host.id,
+                        hostID: hostSnapshot.id,
                         workspaceID: workspaceSnapshot.id,
-                        preview: thread.preview,
+                        preview: thread.name ?? thread.preview,
                         updatedAt: thread.updatedAt,
                         archived: thread.archived,
                         ephemeral: thread.ephemeral,
@@ -172,7 +179,7 @@ extension SessionWorkbenchView {
 
                 self.appState.threadBookmarkStore.replaceThreads(
                     for: workspaceSnapshot.id,
-                    hostID: self.host.id,
+                    hostID: hostSnapshot.id,
                     with: summaries
                 )
 
@@ -195,132 +202,102 @@ extension SessionWorkbenchView {
     }
 
     func sendPrompt(forceNewThread: Bool) {
-        let originalPrompt = self.prompt
-        let originalTokenBadges = self.selectedComposerTokenBadges
+        self.synchronizeComposerDraftScope()
         let trimmedPrompt = self.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedPrompt.isEmpty else { return }
-        let promptForRequest = self.composePromptForRequest(from: trimmedPrompt)
-        guard let selectedWorkspace else {
+        guard !trimmedPrompt.isEmpty, self.selectedThreadDirectInputAllowed else { return }
+        guard let selectedWorkspace, let scope = self.loadedComposerScope,
+              scope == self.composerScope else {
             self.presentCriticalErrorDialog(L10n.text("Select a project first."))
             return
         }
 
+        let submission = CodexComposerSubmission(
+            scope: scope, host: self.host, workspace: selectedWorkspace, draft: self.currentComposerDraft,
+            model: self.composerModelForRequest, reasoning: self.selectedComposerReasoning,
+            collaborationModeID: self.composerCollaborationModeIDForRequest, forceNewThread: forceNewThread
+        )
+        guard self.appState.composerDraftStore.begin(submission) else { return }
+        let originalSummary = forceNewThread ? nil : self.selectedThreadSummary
+        let didRequestPlanMode = self.isPlanCollaborationMode(submission.collaborationModeID)
+        self.prompt = ""
+        self.selectedComposerTokenBadges = []
         self.scrollToBottomRequestCount += 1
 
         if self.isSSHTransport {
-            self.sendPromptViaSSH(
-                promptForRequest: promptForRequest,
-                displayPrompt: trimmedPrompt,
-                selectedWorkspace: selectedWorkspace,
-                forceNewThread: forceNewThread
-            )
+            self.sendPromptViaSSH(submission)
             return
         }
 
-        let collaborationModeIDForRequest = self.composerCollaborationModeIDForRequest
-        let didRequestPlanMode = self.isPlanCollaborationMode(collaborationModeIDForRequest)
-
-        self.prompt = ""
-        self.selectedComposerTokenBadges = []
-        self.pendingPromptDispatchCount += 1
-
-        Task {
-            defer {
-                self.pendingPromptDispatchCount = max(0, self.pendingPromptDispatchCount - 1)
-            }
+        Task { @MainActor in
             do {
-                if self.appState.appServerClient.state != .connected {
-                    try await self.appState.appServerClient.connect(to: self.host)
-                }
+                let result = try await submission.dispatch(using: self.appState.appServerClient)
+                let threadID = result.threadID
+                self.appState.composerDraftStore.complete(submission.id)
+                let sourceStillSelected = self.isComposerViewVisible && self.composerScope == submission.scope
+                self.adoptSubmittedThreadIfCurrent(threadID, submission: submission)
 
-                var threadID = forceNewThread ? nil : self.selectedThreadID
-                if threadID == nil {
-                    threadID = try await self.appState.appServerClient.threadStart(
-                        cwd: selectedWorkspace.remotePath,
-                        approvalPolicy: selectedWorkspace.defaultApprovalPolicy,
-                        model: self.composerModelForRequest
-                    )
-                }
-
-                guard let threadID else {
-                    self.presentCriticalErrorDialog(L10n.text("Failed to resolve thread."))
-                    return
-                }
-
-                self.selectedThreadID = threadID
-                self.appState.hostSessionStore.selectThread(hostID: self.host.id, threadID: threadID)
-
-                var selectedModelForThread = self.selectedThreadSummary?.model
-                var selectedReasoningForThread = self.selectedThreadSummary?.reasoningEffort
-                let selectedEphemeralForThread = self.selectedThreadSummary?.ephemeral ?? false
-                if let activeTurnID = self.appState.appServerClient.activeTurnID(for: threadID) {
-                    try await self.appState.appServerClient.turnSteer(
-                        threadID: threadID,
-                        expectedTurnID: activeTurnID,
-                        inputText: promptForRequest
-                    )
-                    if didRequestPlanMode {
-                        self.showComposerInfo(
-                            L10n.text("Plan mode will apply to the next new turn after the active turn completes."),
-                            tone: .status,
-                            autoDismissAfter: 4.0
-                        )
-                    }
-                } else {
-                    let turnStartResult = try await self.appState.appServerClient.turnStart(
-                        threadID: threadID,
-                        inputText: promptForRequest,
-                        model: self.composerModelForRequest,
-                        effort: self.selectedComposerReasoning,
-                        collaborationModeID: collaborationModeIDForRequest
-                    )
-                    if didRequestPlanMode {
-                        if turnStartResult.collaborationModeApplied {
-                            self.armPlanUserInputAutoPresentation(
-                                threadID: threadID,
-                                turnID: turnStartResult.turnID
-                            )
+                if didRequestPlanMode, sourceStillSelected {
+                    if let started = result.startedTurn {
+                        if started.collaborationModeApplied {
+                            self.armPlanUserInputAutoPresentation(threadID: threadID, turnID: started.turnID)
                         } else {
                             self.showComposerInfo(
                                 L10n.text("Plan mode was not applied by the server. Prompt sent in default mode."),
-                                tone: .status,
-                                autoDismissAfter: 5.0
+                                tone: .status, autoDismissAfter: 5.0
                             )
                         }
-                        self.consumePlanModeAfterSend()
+                        if self.composerCollaborationModeIDForRequest == submission.collaborationModeID {
+                            self.consumePlanModeAfterSend()
+                        }
+                    } else {
+                        self.showComposerInfo(
+                            L10n.text("Plan mode will apply to the next new turn after the active turn completes."),
+                            tone: .status, autoDismissAfter: 4.0
+                        )
                     }
-                    selectedModelForThread = self.composerModelForRequest
-                    selectedReasoningForThread = self.selectedComposerReasoning
                 }
 
                 self.dismissPendingUserInputForPrompt(on: threadID)
-                self.appState.appServerClient.appendLocalEcho(promptForRequest, to: threadID)
+                self.appState.appServerClient.appendLocalEcho(submission.draft.requestText, to: threadID)
 
+                let selectedModel = result.startedTurn == nil
+                    ? (result.threadDetail?.model ?? originalSummary?.model) : submission.model
+                let selectedReasoning = result.startedTurn == nil
+                    ? (result.threadDetail?.reasoningEffort ?? originalSummary?.reasoningEffort) : submission.reasoning
                 self.appState.threadBookmarkStore.upsert(
                     summary: CodexThreadSummary(
-                        threadID: threadID,
-                        hostID: self.host.id,
-                        workspaceID: selectedWorkspace.id,
-                        preview: trimmedPrompt,
-                        updatedAt: Date(),
-                        archived: false,
-                        ephemeral: selectedEphemeralForThread,
-                        cwd: selectedWorkspace.remotePath,
-                        model: selectedModelForThread,
-                        reasoningEffort: selectedReasoningForThread
+                        threadID: threadID, hostID: submission.host.id, workspaceID: submission.workspace.id,
+                        preview: self.appState.appServerClient.threadNamesByID[threadID] ?? trimmedPrompt,
+                        updatedAt: Date(), archived: false,
+                        ephemeral: result.threadDetail?.ephemeral ?? originalSummary?.ephemeral ?? false,
+                        cwd: submission.workspace.remotePath, model: selectedModel, reasoningEffort: selectedReasoning
                     )
                 )
             } catch {
-                let message = self.appState.appServerClient.userFacingMessage(for: error)
-                self.presentCriticalErrorDialog(message)
-                if self.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                   self.selectedComposerTokenBadges.isEmpty {
-                    self.prompt = originalPrompt
-                    self.selectedComposerTokenBadges = originalTokenBadges
-                    self.isPromptFieldFocused = true
-                }
+                self.recoverFailedSubmission(
+                    submission, message: self.appState.appServerClient.userFacingMessage(for: error)
+                )
             }
         }
+    }
+
+    func adoptSubmittedThreadIfCurrent(_ threadID: String, submission: CodexComposerSubmission) {
+        guard submission.maySelectCreatedThread(
+            currentScope: self.composerScope,
+            isVisible: self.isComposerViewVisible && self.appState.selectedHostID == submission.host.id
+        ) else { return }
+        self.saveLoadedComposerDraft()
+        self.selectedThreadID = threadID
+        self.appState.hostSessionStore.selectThread(hostID: submission.host.id, threadID: threadID)
+        self.synchronizeComposerDraftScope()
+    }
+
+    func recoverFailedSubmission(_ submission: CodexComposerSubmission, message: String) {
+        self.appState.composerDraftStore.fail(submission.id)
+        guard self.isComposerViewVisible, self.composerScope == submission.scope else { return }
+        self.presentCriticalErrorDialog(
+            message + "\n\n" + L10n.text("Your unsent input is saved. Use Add to draft to restore it.")
+        )
     }
 
     func presentCommandPalette() {
@@ -448,7 +425,7 @@ extension SessionWorkbenchView {
     }
 
     func pendingUserInputScopeKey(for request: AppServerPendingRequest) -> String? {
-        Self.pendingUserInputScopeKey(threadID: request.threadID, requestIDKey: request.requestIDKey)
+        Self.pendingUserInputScopeKey(threadID: request.threadID, requestIDKey: request.instanceID.uuidString)
     }
 
     func isPendingUserInputSuppressed(_ request: AppServerPendingRequest) -> Bool {
@@ -1155,55 +1132,51 @@ extension SessionWorkbenchView {
         return true
     }
 
-    func sendPromptViaSSH(
-        promptForRequest: String,
-        displayPrompt: String,
-        selectedWorkspace: ProjectWorkspace,
-        forceNewThread: Bool
-    ) {
-        let password = self.appState.remoteHostStore.password(for: self.host.id)
-        let resumeThreadID = forceNewThread ? nil : self.selectedThreadID
+    func sendPromptViaSSH(_ submission: CodexComposerSubmission) {
+        let password = self.appState.remoteHostStore.password(for: submission.host.id)
         self.isRunningSSHAction = true
 
-        Task {
+        Task { @MainActor in
             defer {
                 self.isRunningSSHAction = false
             }
 
             do {
                 let result = try await self.sshCodexExecService.executePrompt(
-                    host: self.host,
+                    host: submission.host,
                     password: password,
-                    workspacePath: selectedWorkspace.remotePath,
-                    prompt: promptForRequest,
-                    resumeThreadID: resumeThreadID,
-                    forceNewThread: forceNewThread,
-                    model: self.composerModelForRequest
+                    workspacePath: submission.workspace.remotePath,
+                    prompt: submission.draft.requestText,
+                    resumeThreadID: submission.targetThreadID,
+                    forceNewThread: submission.forceNewThread,
+                    model: submission.model
                 )
 
-                self.selectedThreadID = result.threadID
-                self.appState.hostSessionStore.selectThread(hostID: self.host.id, threadID: result.threadID)
-                self.appendSSHTranscript(prompt: promptForRequest, response: result.assistantText, threadID: result.threadID)
+                self.appState.composerDraftStore.complete(submission.id)
+                self.adoptSubmittedThreadIfCurrent(result.threadID, submission: submission)
+                self.appendSSHTranscript(
+                    prompt: submission.draft.requestText, response: result.assistantText, threadID: result.threadID
+                )
 
                 self.appState.threadBookmarkStore.upsert(
                     summary: CodexThreadSummary(
                         threadID: result.threadID,
-                        hostID: self.host.id,
-                        workspaceID: selectedWorkspace.id,
-                        preview: displayPrompt,
+                        hostID: submission.host.id,
+                        workspaceID: submission.workspace.id,
+                        preview: submission.draft.text.trimmingCharacters(in: .whitespacesAndNewlines),
                         updatedAt: Date(),
                         archived: false,
-                        cwd: selectedWorkspace.remotePath
+                        cwd: submission.workspace.remotePath
                     )
                 )
 
-                self.prompt = ""
-                self.selectedComposerTokenBadges = []
-                self.showComposerInfo(L10n.text("Executed via codex exec over SSH."), tone: .status)
+                if self.isComposerViewVisible, self.composerScope == CodexComposerDraftScope(
+                    hostID: submission.host.id, workspaceID: submission.workspace.id, threadID: result.threadID
+                ) {
+                    self.showComposerInfo(L10n.text("Executed via codex exec over SSH."), tone: .status)
+                }
             } catch {
-                let message = self.userFacingSSHError(error)
-                self.presentCriticalErrorDialog(message)
-                self.isPromptFieldFocused = true
+                self.recoverFailedSubmission(submission, message: self.userFacingSSHError(error, host: submission.host))
             }
         }
     }
@@ -1217,13 +1190,14 @@ extension SessionWorkbenchView {
         self.sshTranscriptByThread[threadID] = existing
     }
 
-    func userFacingSSHError(_ error: Error) -> String {
+    func userFacingSSHError(_ error: Error, host: RemoteHost? = nil) -> String {
         if let codexError = error as? SSHCodexExecError,
            let description = codexError.errorDescription,
            !description.isEmpty {
             return "[SSH] \(description)"
         }
-        let endpoint = HostKeyStore.endpointKey(host: self.host.host, port: self.host.sshPort)
+        let sourceHost = host ?? self.host
+        let endpoint = HostKeyStore.endpointKey(host: sourceHost.host, port: sourceHost.sshPort)
         return SSHConnectionErrorFormatter.message(for: error, endpoint: endpoint)
     }
 
@@ -1281,10 +1255,15 @@ extension SessionWorkbenchView {
         }
         // Skip when the connection is not ready; onChange(of: state)
         // will re-trigger via scheduleSessionRefresh(.selectedThreadDetail).
-        guard self.appState.appServerClient.state == .connected else {
+        guard self.appState.appServerClient.isConnected(to: self.host.id) else {
             return
         }
+        let requestedScope = self.composerScope
+        let sourceHostID = self.host.id
+        let generation = self.appState.appServerClient.connectionGeneration
         Task {
+            guard self.appState.appServerClient.isConnected(to: sourceHostID),
+                  generation == self.appState.appServerClient.connectionGeneration else { return }
             do {
                 let resumedDetail: CodexThreadDetail?
                 do {
@@ -1292,6 +1271,8 @@ extension SessionWorkbenchView {
                 } catch {
                     resumedDetail = nil
                 }
+                guard self.appState.appServerClient.isConnected(to: sourceHostID),
+                      generation == self.appState.appServerClient.connectionGeneration else { return }
 
                 let authoritativeDetail: CodexThreadDetail?
                 let authoritativeReadError: Error?
@@ -1309,6 +1290,10 @@ extension SessionWorkbenchView {
                     authoritativeDetail: authoritativeDetail,
                     authoritativeReadError: authoritativeReadError
                 )
+                guard self.isComposerViewVisible, self.composerScope == requestedScope,
+                      self.selectedThreadID == threadID,
+                      self.appState.appServerClient.isConnected(to: sourceHostID),
+                      generation == self.appState.appServerClient.connectionGeneration else { return }
 
                 let latestTurnModel = detail.turns.compactMap(\.model).last
                 let latestTurnReasoning = detail.turns.compactMap(\.reasoningEffort).last
@@ -1326,7 +1311,8 @@ extension SessionWorkbenchView {
             } catch {
                 // Suppress error dialogs when auto-reconnect is in progress;
                 // the connection handler will retry this load on reconnect.
-                if !self.appState.appServerClient.isConnectionTransient {
+                if self.isComposerViewVisible, self.composerScope == requestedScope,
+                   !self.appState.appServerClient.isConnectionTransient {
                     self.presentCriticalErrorDialog(self.appState.appServerClient.userFacingMessage(for: error))
                 }
             }

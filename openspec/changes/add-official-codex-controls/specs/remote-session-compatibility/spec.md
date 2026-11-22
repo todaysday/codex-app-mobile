@@ -25,6 +25,13 @@ WHEN the client processes the refresh
 THEN it terminates the faulty continuation and reports the incomplete result
 AND it preserves existing useful session metadata without an infinite loop.
 
+#### Scenario: Explicit filter rejected by an older server
+
+GIVEN the user requests a specific source or parent/ancestor relationship and the server rejects that filter
+WHEN compatibility handling runs
+THEN the client reports the unavailable filtered query
+AND it does not silently drop the explicit filter and display unrelated sessions as matching results.
+
 ### Requirement: Read and attach existing history using supported contracts
 
 WHEN a stored thread is opened, the client SHALL distinguish reading history from subscribing to a running thread, use server-provided history and cursor fields, and never create a duplicate thread or server to open it.

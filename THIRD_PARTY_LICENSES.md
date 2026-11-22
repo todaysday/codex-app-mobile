@@ -11,6 +11,12 @@ This project retains CodexAppMobile and its Swift Package Manager dependencies, 
 
 The dependency inventory below is inherited from the inspected upstream revision and its `CodexAppMobile.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`. Distribution packaging also verifies resolved checkout revisions and includes their actual `LICENSE` / `NOTICE` files inside the unsigned app.
 
+## Official Codex protocol reference and adaptations
+
+The current protocol integration is based on [OpenAI Codex](https://github.com/openai/codex), stable tag `rust-v0.171.0`, commit `ccf9be8cc458bd6b8336fe84d68d8893f2691a5e` (Copyright 2025 OpenAI). The upstream [Apache-2.0 license](docs/licenses/OpenAI-Codex-APACHE-2.0.txt) and [NOTICE](docs/licenses/OpenAI-Codex-NOTICE.txt) are retained verbatim and bundled under `Attribution/Project`.
+
+The app's Swift models, request adapters, notification handling, and contract-test fixtures adapt the published `app-server-protocol` schemas for this mobile client. These are modified Swift implementations of the referenced contracts. The app does not include the Rust Codex runtime or the Ratatui terminal UI. The unmodified upstream NOTICE is included for attribution; the concrete bundled runtime dependencies remain the Swift packages listed below.
+
 ## Dependencies
 
 | Package | Version | License | Repository |

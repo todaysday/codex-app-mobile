@@ -78,7 +78,7 @@ enum JSONValue: Codable, Equatable, Hashable {
     var intValue: Int? {
         switch self {
         case .number(let value):
-            return Int(value)
+            return Int(exactly: value)
         case .string(let value):
             return Int(value)
         default:
@@ -152,6 +152,9 @@ enum AppServerClientError: LocalizedError {
     case incompatibleVersion(current: String, minimum: String)
     case malformedResponse
     case unsupportedMessage
+    case invalidThreadFilters
+    case incompleteHistory(method: String)
+    case readOnlyThread
 
     var errorDescription: String? {
         switch self {
@@ -174,47 +177,57 @@ enum AppServerClientError: LocalizedError {
             return L10n.text("Malformed response from app-server.")
         case .unsupportedMessage:
             return L10n.text("Unsupported message from app-server.")
+        case .invalidThreadFilters:
+            return L10n.text("Choose either a parent thread or an ancestor thread, not both.")
+        case .incompleteHistory(let method):
+            return L10n.format("The server returned incomplete history for %@. Refresh to try again; saved history has been retained.", method)
+        case .readOnlyThread:
+            return L10n.text("This thread does not accept direct input. Continue through its parent thread.")
         }
     }
 }
 
 actor AppServerMessageRouter {
     private var nextRequestID: Int = 1
-    private var pending: [String: CheckedContinuation<JSONValue, Error>] = [:]
+    private struct PendingResponse {
+        let continuation: CheckedContinuation<JSONValue, Error>
+        let generation: Int
+    }
+    private var pending: [String: PendingResponse] = [:]
 
     func makeRequestID() -> Int {
         defer { self.nextRequestID += 1 }
         return self.nextRequestID
     }
 
-    func storeContinuation(_ continuation: CheckedContinuation<JSONValue, Error>, for idKey: String) {
-        self.pending[idKey] = continuation
+    func storeContinuation(_ continuation: CheckedContinuation<JSONValue, Error>, for idKey: String, generation: Int = 0) {
+        self.pending[idKey] = PendingResponse(continuation: continuation, generation: generation)
     }
 
     func removeContinuation(for idKey: String) -> CheckedContinuation<JSONValue, Error>? {
-        self.pending.removeValue(forKey: idKey)
+        self.pending.removeValue(forKey: idKey)?.continuation
     }
 
     func resolveResponse(id: JSONValue, result: JSONValue?, error: JSONRPCErrorPayload?) {
         guard let idKey = Self.idKey(from: id),
-              let continuation = self.pending.removeValue(forKey: idKey)
+              let pending = self.pending.removeValue(forKey: idKey)
         else {
             return
         }
 
         if let error {
-            continuation.resume(throwing: AppServerClientError.remote(code: error.code, message: error.message))
+            pending.continuation.resume(throwing: AppServerClientError.remote(code: error.code, message: error.message))
             return
         }
 
-        continuation.resume(returning: result ?? .null)
+        pending.continuation.resume(returning: result ?? .null)
     }
 
-    func failAll(with error: Error) {
-        let continuations = self.pending.values
-        self.pending.removeAll()
-        continuations.forEach { continuation in
-            continuation.resume(throwing: error)
+    func failAll(with error: Error, generation: Int? = nil) {
+        let failed = self.pending.filter { generation == nil || $0.value.generation == generation }
+        for (id, pending) in failed {
+            self.pending.removeValue(forKey: id)
+            pending.continuation.resume(throwing: error)
         }
     }
 
@@ -344,6 +357,19 @@ struct AppServerUserInputQuestion: Identifiable, Equatable {
     let id: String
     let prompt: String
     let options: [AppServerUserInputQuestionOption]
+    let header: String?
+    let isSecret: Bool
+    let isOther: Bool
+
+    init(id: String, prompt: String, options: [AppServerUserInputQuestionOption],
+         header: String? = nil, isSecret: Bool = false, isOther: Bool = true) {
+        self.id = id
+        self.prompt = prompt
+        self.options = options
+        self.header = header
+        self.isSecret = isSecret
+        self.isOther = isOther
+    }
 }
 
 enum AppServerPendingRequestKind: Equatable {
@@ -359,10 +385,12 @@ enum AppServerPendingRequestKind: Equatable {
     )
     case fileChange(reason: String?)
     case userInput(questions: [AppServerUserInputQuestion])
+    case permissionsApproval(AppServerPermissionApproval)
     case unknown
 }
 
 struct AppServerPendingRequest: Identifiable, Equatable {
+    let instanceID: UUID
     let requestIDKey: String
     let rpcID: JSONValue
     let method: String
@@ -370,8 +398,29 @@ struct AppServerPendingRequest: Identifiable, Equatable {
     let turnID: String
     let itemID: String
     let kind: AppServerPendingRequestKind
+    let commandKind: String
+    let isBlocking: Bool
+    let additionalPermissionProfile: AppServerPermissionApproval?
 
-    var id: String { self.requestIDKey }
+    init(requestIDKey: String, rpcID: JSONValue, method: String, threadID: String,
+         turnID: String, itemID: String, kind: AppServerPendingRequestKind,
+         commandKind: String = "command", isBlocking: Bool = true,
+         additionalPermissionProfile: AppServerPermissionApproval? = nil,
+         instanceID: UUID = UUID()) {
+        self.instanceID = instanceID
+        self.requestIDKey = requestIDKey
+        self.rpcID = rpcID
+        self.method = method
+        self.threadID = threadID
+        self.turnID = turnID
+        self.itemID = itemID
+        self.kind = kind
+        self.commandKind = commandKind
+        self.isBlocking = isBlocking
+        self.additionalPermissionProfile = additionalPermissionProfile
+    }
+
+    var id: String { self.instanceID.uuidString }
 
     var title: String {
         switch self.kind {
@@ -381,10 +430,17 @@ struct AppServerPendingRequest: Identifiable, Equatable {
             return L10n.text("File Change Approval")
         case .userInput:
             return L10n.text("User Input Required")
+        case .permissionsApproval:
+            return L10n.text("Permissions Approval")
         case .unknown:
             return L10n.text("Server Request")
         }
     }
+}
+
+struct AppServerThreadStatus: Codable, Equatable {
+    let type: String
+    let activeFlags: [String]?
 }
 
 struct RemoteThreadRecord: Equatable, Identifiable {
@@ -396,6 +452,39 @@ struct RemoteThreadRecord: Equatable, Identifiable {
     let cwd: String
     let model: String?
     let reasoningEffort: String?
+    var name: String?
+    let parentThreadID: String?
+    let forkedFromID: String?
+    let agentNickname: String?
+    let agentRole: String?
+    var status: AppServerThreadStatus?
+    let canAcceptDirectInput: Bool?
+    let historyMode: String?
+    let source: JSONValue?
+
+    init(id: String, preview: String, updatedAt: Date, archived: Bool, ephemeral: Bool,
+         cwd: String, model: String?, reasoningEffort: String?, name: String? = nil,
+         parentThreadID: String? = nil, forkedFromID: String? = nil, agentNickname: String? = nil,
+         agentRole: String? = nil, status: AppServerThreadStatus? = nil,
+         canAcceptDirectInput: Bool? = nil, historyMode: String? = nil, source: JSONValue? = nil) {
+        self.id = id
+        self.preview = preview
+        self.updatedAt = updatedAt
+        self.archived = archived
+        self.ephemeral = ephemeral
+        self.cwd = cwd
+        self.model = model
+        self.reasoningEffort = reasoningEffort
+        self.name = name
+        self.parentThreadID = parentThreadID
+        self.forkedFromID = forkedFromID
+        self.agentNickname = agentNickname
+        self.agentRole = agentRole
+        self.status = status
+        self.canAcceptDirectInput = canAcceptDirectInput
+        self.historyMode = historyMode
+        self.source = source
+    }
 }
 
 struct AppServerModelUpgradeInfo: Equatable {
@@ -403,6 +492,12 @@ struct AppServerModelUpgradeInfo: Equatable {
     let upgradeCopy: String?
     let modelLink: String?
     let migrationMarkdown: String?
+}
+
+struct AppServerModelServiceTier: Decodable, Equatable, Identifiable {
+    let id: String
+    let name: String
+    let description: String
 }
 
 struct AppServerModelDescriptor: Equatable, Identifiable {
@@ -413,6 +508,30 @@ struct AppServerModelDescriptor: Equatable, Identifiable {
     let isDefault: Bool
     let upgradeInfo: AppServerModelUpgradeInfo?
     let availabilityNuxMessage: String?
+    let description: String?
+    let inputModalities: [String]
+    let multiAgentVersion: String?
+    let serviceTiers: [AppServerModelServiceTier]
+    let defaultServiceTier: String?
+
+    init(model: String, displayName: String, reasoningEffortOptions: [CodexReasoningEffortOption],
+         defaultReasoningEffort: String?, isDefault: Bool, upgradeInfo: AppServerModelUpgradeInfo?,
+         availabilityNuxMessage: String?, description: String? = nil, inputModalities: [String] = [],
+         multiAgentVersion: String? = nil, serviceTiers: [AppServerModelServiceTier] = [],
+         defaultServiceTier: String? = nil) {
+        self.model = model
+        self.displayName = displayName
+        self.reasoningEffortOptions = reasoningEffortOptions
+        self.defaultReasoningEffort = defaultReasoningEffort
+        self.isDefault = isDefault
+        self.upgradeInfo = upgradeInfo
+        self.availabilityNuxMessage = availabilityNuxMessage
+        self.description = description
+        self.inputModalities = inputModalities
+        self.multiAgentVersion = multiAgentVersion
+        self.serviceTiers = serviceTiers
+        self.defaultServiceTier = defaultServiceTier
+    }
 
     var id: String { self.model }
 }
@@ -525,18 +644,39 @@ struct AppServerRateLimitSummary: Equatable, Identifiable {
     var id: String { "\(self.name)-\(self.windowMinutes ?? -1)" }
 }
 
+struct AppServerTokenUsageBreakdown: Equatable {
+    let totalTokens: Int?
+    let inputTokens: Int?
+    let cachedInputTokens: Int?
+    let cacheWriteInputTokens: Int?
+    let outputTokens: Int?
+    let reasoningOutputTokens: Int?
+}
+
 struct AppServerContextUsageSummary: Equatable {
     let usedTokens: Int?
     let maxTokens: Int?
     let remainingTokens: Int?
     let updatedAt: Date
+    let lastUsage: AppServerTokenUsageBreakdown?
+    let totalUsage: AppServerTokenUsageBreakdown?
+
+    init(usedTokens: Int?, maxTokens: Int?, remainingTokens: Int?, updatedAt: Date,
+         lastUsage: AppServerTokenUsageBreakdown? = nil, totalUsage: AppServerTokenUsageBreakdown? = nil) {
+        self.usedTokens = usedTokens
+        self.maxTokens = maxTokens
+        self.remainingTokens = remainingTokens
+        self.updatedAt = updatedAt
+        self.lastUsage = lastUsage
+        self.totalUsage = totalUsage
+    }
 
     var remainingPercent: Double? {
         if let remainingTokens, let maxTokens, maxTokens > 0 {
             return max(0, min(100, (Double(remainingTokens) / Double(maxTokens)) * 100))
         }
         if let usedTokens, let maxTokens, maxTokens > 0 {
-            return max(0, min(100, (Double(maxTokens - usedTokens) / Double(maxTokens)) * 100))
+            return max(0, min(100, ((Double(maxTokens) - Double(usedTokens)) / Double(maxTokens)) * 100))
         }
         return nil
     }

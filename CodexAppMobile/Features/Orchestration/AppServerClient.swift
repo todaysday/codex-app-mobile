@@ -45,6 +45,17 @@ final class AppServerClient: ObservableObject {
     @Published private(set) var availableSlashCommands: [AppServerSlashCommandDescriptor] = []
     @Published private(set) var rateLimits: [AppServerRateLimitSummary] = []
     @Published private(set) var contextUsageByThread: [String: AppServerContextUsageSummary] = [:]
+    @Published var threadRecordsByID: [String: RemoteThreadRecord] = [:]
+    @Published var threadGoalsByID: [String: CodexThreadGoal] = [:]
+    @Published var threadPlansByID: [String: CodexThreadPlan] = [:]
+    @Published var threadDiffsByID: [String: CodexThreadDiff] = [:]
+    @Published var threadNamesByID: [String: String] = [:]
+    @Published var compactingThreads: Set<String> = []
+    @Published var unsupportedOfficialMethods: Set<String> = []
+    var goalRevisionByThread: [String: Int] = [:]
+    var threadNameRevisionByThread: [String: Int] = [:]
+    var compactionAcknowledgedThreads: Set<String> = []
+    private(set) var connectionGeneration = 0
     @Published private(set) var eventLog: [String] = []
     @Published private(set) var diagnostics = AppServerDiagnostics(
         minimumRequiredVersion: AppServerClient.minimumSupportedCLIVersion
@@ -68,6 +79,14 @@ final class AppServerClient: ObservableObject {
     /// Tracks the transcript snapshot before a turn starts so we can extract the response delta.
     private var transcriptSnapshotBeforeTurn: [String: String] = [:]
     private var slashCommandCatalogRebuildCount = 0
+    private var turnStateRevisionByThread: [String: Int] = [:]
+    private var transcriptRevisionByThread: [String: Int] = [:]
+    private var statusRevisionByThread: [String: Int] = [:]
+    private var lastReportedStatusByThread: [String: AppServerThreadStatus] = [:]
+    private(set) var latestTurnIDByThread: [String: String] = [:]
+    private var respondingRequestIDs: Set<UUID> = []
+    var requestOverrideForTesting: (@MainActor (String, JSONValue?) async throws -> JSONValue)?
+    var responseOverrideForTesting: (@MainActor (AppServerPendingRequest, JSONValue) async throws -> Void)?
 
     struct CatalogRefreshOverrides {
         var modelCatalog: [AppServerModelDescriptor]?
@@ -113,6 +132,10 @@ final class AppServerClient: ObservableObject {
     /// operations may temporarily fail but auto-reconnect will retry.
     var isConnectionTransient: Bool {
         self.state == .connecting || self.state == .reconnecting
+    }
+
+    func isConnected(to hostID: UUID) -> Bool {
+        self.state == .connected && self.lastHost?.id == hostID
     }
 
     private func resetDiagnosticsForNewConnection() {
@@ -197,6 +220,7 @@ final class AppServerClient: ObservableObject {
         let existing = self.transcriptByThread[threadID] ?? ""
         let separator = existing.isEmpty ? "" : "\n"
         self.transcriptByThread[threadID] = existing + "\(separator)User: \(text)\nAssistant: "
+        self.transcriptRevisionByThread[threadID, default: 0] &+= 1
     }
 
     func clearThreadTranscript(_ threadID: String) {
@@ -343,45 +367,244 @@ final class AppServerClient: ObservableObject {
     }
 
 
-    func threadList(archived: Bool? = nil, limit: Int = 100) async throws -> [RemoteThreadRecord] {
-        var params: [String: JSONValue] = [
-            "limit": .number(Double(limit))
+    static let allThreadSourceKinds = [
+        "cli", "vscode", "exec", "appServer", "subAgent", "subAgentReview",
+        "subAgentCompact", "subAgentThreadSpawn", "subAgentOther", "unknown",
+    ]
+
+    /// `limit` is a page size, not a truncation limit for the user's history.
+    func threadList(archived: Bool? = nil, limit: Int = 100,
+                    parentThreadID: String? = nil, ancestorThreadID: String? = nil,
+                    sourceKinds: [String]? = nil) async throws -> [RemoteThreadRecord] {
+        let parent = Self.nonEmpty(parentThreadID)
+        let ancestor = Self.nonEmpty(ancestorThreadID)
+        guard parent == nil || ancestor == nil else { throw AppServerClientError.invalidThreadFilters }
+        let generation = self.connectionGeneration
+        let statusRevisions = self.statusRevisionByThread
+        let nameRevisions = self.threadNameRevisionByThread
+        var filters: [String: JSONValue] = [
+            "limit": .number(Double(min(100, max(1, limit)))),
+            "sourceKinds": .array((sourceKinds ?? Self.allThreadSourceKinds).map(JSONValue.string)),
         ]
-        if let archived {
-            params["archived"] = .bool(archived)
+        if let archived { filters["archived"] = .bool(archived) }
+        if let parent { filters["parentThreadId"] = .string(parent) }
+        if let ancestor { filters["ancestorThreadId"] = .string(ancestor) }
+        var records: [RemoteThreadRecord] = []
+        var indices: [String: Int] = [:]
+        var cursor: String?
+        var seenCursors: Set<String> = []
+        while true {
+            try Task.checkCancellation()
+            guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
+            var params = filters
+            if let cursor { params["cursor"] = .string(cursor) }
+            let result: JSONValue
+            do {
+                result = try await self.request(method: "thread/list", params: .object(params))
+            } catch {
+                // Never remove an explicitly requested relationship or source restriction.
+                guard cursor == nil, parent == nil, ancestor == nil, sourceKinds == nil,
+                      filters["sourceKinds"] != nil, Self.isUnsupportedSourceKinds(error) else { throw error }
+                filters.removeValue(forKey: "sourceKinds")
+                self.appendEvent("This server does not support all-source history. Showing its legacy interactive sources.")
+                continue
+            }
+            guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
+            let payload: ThreadListResponsePayload = try self.decode(result, as: ThreadListResponsePayload.self)
+            for thread in payload.data {
+                let record = Self.threadRecord(thread, archived: archived ?? false)
+                if let index = indices[record.id] {
+                    if record.updatedAt > records[index].updatedAt { records[index] = record }
+                } else {
+                    indices[record.id] = records.count
+                    records.append(record)
+                }
+            }
+            guard let next = payload.nextCursor else { break }
+            guard seenCursors.insert(next).inserted else {
+                throw AppServerClientError.incompleteHistory(method: "thread/list")
+            }
+            cursor = next
         }
+        try Task.checkCancellation()
+        for index in records.indices {
+            let id = records[index].id
+            if statusRevisions[id, default: 0] != self.statusRevisionByThread[id, default: 0] {
+                records[index].status = self.lastReportedStatusByThread[id]
+            }
+            if nameRevisions[id, default: 0] != self.threadNameRevisionByThread[id, default: 0] {
+                records[index].name = self.threadNamesByID[id]
+            }
+            self.rememberThread(records[index])
+        }
+        return records
+    }
 
-        let result = try await self.request(method: "thread/list", params: .object(params))
-        let payload: ThreadListResponsePayload = try self.decode(result, as: ThreadListResponsePayload.self)
-
-        return payload.data.map { thread in
-            RemoteThreadRecord(
-                id: thread.id,
-                preview: thread.preview,
-                updatedAt: Date(timeIntervalSince1970: Double(thread.updatedAt)),
-                archived: archived ?? false,
-                ephemeral: thread.ephemeral,
-                cwd: thread.cwd,
-                model: Self.nonEmpty(thread.model),
-                reasoningEffort: Self.normalizedReasoningEffort(thread.reasoningEffort)
-            )
+    func threadLoadedList(limit: Int = 100) async throws -> [String] {
+        let generation = self.connectionGeneration
+        var ids: [String] = []
+        var seenIDs: Set<String> = []
+        var cursor: String?
+        var seenCursors: Set<String> = []
+        while true {
+            try Task.checkCancellation()
+            guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
+            var params: [String: JSONValue] = ["limit": .number(Double(min(100, max(1, limit))))]
+            if let cursor { params["cursor"] = .string(cursor) }
+            let result = try await self.request(method: "thread/loaded/list", params: .object(params))
+            guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
+            let payload: ThreadLoadedListResponsePayload = try self.decode(result, as: ThreadLoadedListResponsePayload.self)
+            for id in payload.data where seenIDs.insert(id).inserted { ids.append(id) }
+            guard let next = payload.nextCursor else { return ids }
+            guard seenCursors.insert(next).inserted else {
+                throw AppServerClientError.incompleteHistory(method: "thread/loaded/list")
+            }
+            cursor = next
         }
     }
 
-    func threadRead(threadID: String) async throws -> CodexThreadDetail {
-        let params: JSONValue = .object([
-            "threadId": .string(threadID),
-            "includeTurns": .bool(true),
-        ])
-
-        let result = try await self.request(method: "thread/read", params: params)
+    func threadRead(threadID: String, turnsCursor: String? = nil,
+                    turnsSortDirection: String = "asc") async throws -> CodexThreadDetail {
+        let generation = self.connectionGeneration
+        let revision = self.turnStateRevisionByThread[threadID, default: 0]
+        let transcriptRevision = self.transcriptRevisionByThread[threadID, default: 0]
+        let statusRevision = self.statusRevisionByThread[threadID, default: 0]
+        let nameRevision = self.threadNameRevisionByThread[threadID, default: 0]
+        let wasCompactionAcknowledged = self.compactionAcknowledgedThreads.contains(threadID)
+        let result = try await self.request(method: "thread/read", params: .object([
+            "threadId": .string(threadID), "includeTurns": .bool(false),
+        ]))
+        guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
         let payload: ThreadReadResponsePayload = try self.decode(result, as: ThreadReadResponsePayload.self)
-        let detail = self.convertThread(
-            payload.thread,
-            modelOverride: payload.model,
-            reasoningEffortOverride: payload.reasoningEffort
-        )
-        self.transcriptByThread[threadID] = Self.renderThread(detail)
+        guard payload.thread.id == threadID else { throw AppServerClientError.malformedResponse }
+        let thread = try await self.hydrateThread(payload.thread, cursor: turnsCursor, sortDirection: turnsSortDirection)
+        return try self.acceptThreadSnapshot(thread, model: payload.model, effort: payload.reasoningEffort,
+                                             generation: generation, revision: revision,
+                                             transcriptRevision: transcriptRevision, statusRevision: statusRevision,
+                                             nameRevision: nameRevision, wasCompactionAcknowledged: wasCompactionAcknowledged)
+    }
+
+    func ensureSafeThreadSnapshot(threadID: String) async throws -> CodexThreadDetail {
+        try await self.threadRead(threadID: threadID)
+    }
+
+    private func rememberThread(_ record: RemoteThreadRecord) {
+        self.threadRecordsByID[record.id] = record
+        self.threadNamesByID[record.id] = record.name
+    }
+
+    private func hydrateThread(_ metadata: ThreadReadThreadPayload, cursor initialCursor: String? = nil,
+                               sortDirection: String = "asc") async throws -> ThreadReadThreadPayload {
+        guard sortDirection == "asc" || sortDirection == "desc" else {
+            throw CodexOfficialError.invalidInput("Choose an ascending or descending history order.")
+        }
+        let generation = self.connectionGeneration
+        let hasExplicitRange = initialCursor != nil || sortDirection != "asc"
+        let needsPages = metadata.historyMode == "paginated" || hasExplicitRange
+            || metadata.turns.contains(where: { $0.itemsView != nil && $0.itemsView != "full" })
+
+        func legacyHistory() async throws -> ThreadReadThreadPayload {
+            let result = try await self.request(method: "thread/read", params: .object([
+                "threadId": .string(metadata.id), "includeTurns": .bool(true),
+            ]))
+            guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
+            let payload = try self.decode(result, as: ThreadReadResponsePayload.self)
+            guard payload.thread.id == metadata.id else { throw AppServerClientError.malformedResponse }
+            guard !payload.thread.turns.contains(where: { $0.itemsView != nil && $0.itemsView != "full" }) else {
+                throw AppServerClientError.incompleteHistory(method: "thread/read")
+            }
+            return payload.thread
+        }
+
+        if !needsPages {
+            // Older resumes may already contain full history even when excludeTurns was requested.
+            if !metadata.turns.isEmpty { return metadata }
+            return try await legacyHistory()
+        }
+        if self.unsupportedOfficialMethods.contains("thread/turns/list") {
+            guard !hasExplicitRange else { throw CodexOfficialError.unsupported("thread/turns/list") }
+            return try await legacyHistory()
+        }
+
+        var thread = metadata
+        var turns: [ThreadReadTurnPayload] = []
+        var indices: [String: Int] = [:]
+        var cursor = initialCursor
+        var seenCursors = Set(initialCursor.map { [$0] } ?? [])
+        while true {
+            try Task.checkCancellation()
+            guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
+            var params: [String: JSONValue] = [
+                "threadId": .string(metadata.id), "limit": .number(100),
+                "sortDirection": .string(sortDirection), "itemsView": .string("full"),
+            ]
+            if let cursor { params["cursor"] = .string(cursor) }
+            let result: JSONValue
+            do {
+                result = try await self.request(method: "thread/turns/list", params: .object(params))
+            } catch let AppServerClientError.remote(code, _) where code == -32601 {
+                guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
+                self.unsupportedOfficialMethods.insert("thread/turns/list")
+                guard !hasExplicitRange else { throw CodexOfficialError.unsupported("thread/turns/list") }
+                return try await legacyHistory()
+            }
+            guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
+            let page = try self.decode(result, as: ThreadTurnsListResponsePayload.self)
+            for turn in page.data {
+                guard turn.itemsView == nil || turn.itemsView == "full" else {
+                    throw AppServerClientError.incompleteHistory(method: "thread/turns/list")
+                }
+                if let index = indices[turn.id] { turns[index] = turn }
+                else { indices[turn.id] = turns.count; turns.append(turn) }
+            }
+            guard let next = page.nextCursor else { break }
+            guard seenCursors.insert(next).inserted else {
+                throw AppServerClientError.incompleteHistory(method: "thread/turns/list")
+            }
+            cursor = next
+        }
+        try Task.checkCancellation()
+        thread.turns = sortDirection == "desc" ? Array(turns.reversed()) : turns
+        return thread
+    }
+
+    private func acceptThreadSnapshot(_ thread: ThreadReadThreadPayload, model: String?, effort: String?,
+                                      generation: Int, revision: Int, transcriptRevision: Int,
+                                      statusRevision: Int, nameRevision: Int,
+                                      wasCompactionAcknowledged: Bool) throws -> CodexThreadDetail {
+        guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
+        let detail = self.convertThread(thread, modelOverride: model, reasoningEffortOverride: effort)
+        // A response requested before a new turn must not roll that live state back.
+        guard revision == self.turnStateRevisionByThread[thread.id, default: 0] else { return detail }
+        var record = Self.threadRecord(thread, existing: self.threadRecordsByID[thread.id], model: model, effort: effort)
+        if statusRevision != self.statusRevisionByThread[thread.id, default: 0] {
+            record.status = self.lastReportedStatusByThread[thread.id]
+        }
+        if nameRevision != self.threadNameRevisionByThread[thread.id, default: 0] {
+            record.name = self.threadNamesByID[thread.id]
+        }
+        self.rememberThread(record)
+        if transcriptRevision == self.transcriptRevisionByThread[thread.id, default: 0] {
+            self.transcriptByThread[thread.id] = Self.renderThread(detail)
+        }
+        self.latestTurnIDByThread[thread.id] = thread.turns.last?.id
+        if let active = thread.turns.last(where: { $0.status == "inProgress" }) {
+            self.activeTurnIDByThread[thread.id] = active.id
+            self.latestTurnIDByThread[thread.id] = active.id
+            self.turnStreamingPhaseByThread[thread.id] = active.items.contains(where: { $0.type == "agentMessage" })
+                ? .responding : .thinking
+            var before = thread
+            before.turns.removeAll(where: { $0.id == active.id })
+            self.transcriptSnapshotBeforeTurn[thread.id] = Self.renderThread(self.convertThread(before))
+        } else if record.status?.type != "active" {
+            self.activeTurnIDByThread.removeValue(forKey: thread.id)
+            self.turnStreamingPhaseByThread.removeValue(forKey: thread.id)
+            self.transcriptSnapshotBeforeTurn.removeValue(forKey: thread.id)
+            self.clearStreamedItemPrefixKeys(for: thread.id)
+            self.endBackgroundProcessingIfIdle()
+        }
+        self.reconcileOfficialSnapshot(threadID: thread.id, status: record.status,
+                                       wasCompactionAcknowledged: wasCompactionAcknowledged)
         return detail
     }
 
@@ -481,6 +704,8 @@ final class AppServerClient: ObservableObject {
         delivery: ReviewDelivery = .inline,
         target: ReviewTarget = .uncommittedChanges
     ) async throws -> String {
+        let generation = self.connectionGeneration
+        let revisions = self.turnStateRevisionByThread
         let targetCandidates: [JSONValue]
         switch target {
         case .baseBranch(let baseBranch):
@@ -522,6 +747,7 @@ final class AppServerClient: ObservableObject {
         guard let result else {
             throw AppServerClientError.malformedResponse
         }
+        guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
         guard let object = result.objectValue else {
             throw AppServerClientError.malformedResponse
         }
@@ -535,24 +761,41 @@ final class AppServerClient: ObservableObject {
             ]
         ) ?? threadID
 
-        if let turnID = Self.findString(in: object, paths: [["turn", "id"]]) {
+        if let turnID = Self.findString(in: object, paths: [["turn", "id"]]),
+           revisions[reviewThreadID, default: 0] == self.turnStateRevisionByThread[reviewThreadID, default: 0] {
             self.activeTurnIDByThread[reviewThreadID] = turnID
+            self.latestTurnIDByThread[reviewThreadID] = turnID
+            self.turnStateRevisionByThread[reviewThreadID, default: 0] &+= 1
             self.turnStreamingPhaseByThread[reviewThreadID] = .thinking
         }
         return reviewThreadID
     }
 
     func threadResume(threadID: String) async throws -> CodexThreadDetail {
-        let params: JSONValue = .object(["threadId": .string(threadID)])
-        let result = try await self.request(method: "thread/resume", params: params)
+        let generation = self.connectionGeneration
+        let revision = self.turnStateRevisionByThread[threadID, default: 0]
+        let transcriptRevision = self.transcriptRevisionByThread[threadID, default: 0]
+        let statusRevision = self.statusRevisionByThread[threadID, default: 0]
+        let nameRevision = self.threadNameRevisionByThread[threadID, default: 0]
+        let wasCompactionAcknowledged = self.compactionAcknowledgedThreads.contains(threadID)
+        let result: JSONValue
+        do {
+            result = try await self.request(method: "thread/resume", params: .object([
+                "threadId": .string(threadID), "excludeTurns": .bool(true),
+            ]))
+        } catch let AppServerClientError.remote(code, message) where code == -32602
+                    && (message.lowercased().contains("excludeturns") || message.lowercased().contains("exclude_turns")) {
+            guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
+            result = try await self.request(method: "thread/resume", params: .object(["threadId": .string(threadID)]))
+        }
+        guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
         let payload: ThreadResumeResponsePayload = try self.decode(result, as: ThreadResumeResponsePayload.self)
-        let detail = self.convertThread(
-            payload.thread,
-            modelOverride: payload.model,
-            reasoningEffortOverride: payload.reasoningEffort
-        )
-        self.transcriptByThread[threadID] = Self.renderThread(detail)
-        return detail
+        guard payload.thread.id == threadID else { throw AppServerClientError.malformedResponse }
+        let thread = try await self.hydrateThread(payload.thread)
+        return try self.acceptThreadSnapshot(thread, model: payload.model, effort: payload.reasoningEffort,
+                                             generation: generation, revision: revision,
+                                             transcriptRevision: transcriptRevision, statusRevision: statusRevision,
+                                             nameRevision: nameRevision, wasCompactionAcknowledged: wasCompactionAcknowledged)
     }
 
     func threadArchive(threadID: String, archived: Bool) async throws {
@@ -571,6 +814,13 @@ final class AppServerClient: ObservableObject {
         effort: String?,
         collaborationModeID: String? = nil
     ) async throws -> TurnStartResult {
+        guard self.threadRecordsByID[threadID]?.canAcceptDirectInput != false else {
+            throw AppServerClientError.readOnlyThread
+        }
+        guard self.activeTurnIDByThread[threadID] == nil,
+              self.threadRecordsByID[threadID]?.status?.type != "active" else {
+            throw CodexOfficialError.threadBusy
+        }
         let trimmedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedModel = (trimmedModel?.isEmpty == false) ? trimmedModel : nil
         let trimmedEffort = effort?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -582,6 +832,8 @@ final class AppServerClient: ObservableObject {
             effort: String?,
             collaborationModeID: String?
         ) async throws -> TurnStartResult {
+            let generation = self.connectionGeneration
+            let revision = self.turnStateRevisionByThread[threadID, default: 0]
             var params: [String: JSONValue] = [
                 "threadId": .string(threadID),
                 "input": .array([
@@ -618,9 +870,14 @@ final class AppServerClient: ObservableObject {
             }
 
             let result = try await self.request(method: "turn/start", params: .object(params))
+            guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
             let payload: TurnStartResponsePayload = try self.decode(result, as: TurnStartResponsePayload.self)
-            self.activeTurnIDByThread[threadID] = payload.turn.id
-            self.turnStreamingPhaseByThread[threadID] = .thinking
+            if revision == self.turnStateRevisionByThread[threadID, default: 0] {
+                self.activeTurnIDByThread[threadID] = payload.turn.id
+                self.latestTurnIDByThread[threadID] = payload.turn.id
+                self.turnStateRevisionByThread[threadID, default: 0] &+= 1
+                self.turnStreamingPhaseByThread[threadID] = .thinking
+            }
             return TurnStartResult(
                 turnID: payload.turn.id,
                 collaborationModeApplied: collaborationModeApplied
@@ -681,6 +938,10 @@ final class AppServerClient: ObservableObject {
     }
 
     func turnSteer(threadID: String, expectedTurnID: String, inputText: String) async throws {
+        guard self.threadRecordsByID[threadID]?.canAcceptDirectInput != false else {
+            throw AppServerClientError.readOnlyThread
+        }
+        let generation = self.connectionGeneration
         let params: JSONValue = .object([
             "threadId": .string(threadID),
             "expectedTurnId": .string(expectedTurnID),
@@ -692,7 +953,10 @@ final class AppServerClient: ObservableObject {
             ]),
         ])
         _ = try await self.request(method: "turn/steer", params: params)
-        self.turnStreamingPhaseByThread[threadID] = .thinking
+        guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
+        if self.activeTurnIDByThread[threadID] == expectedTurnID {
+            self.turnStreamingPhaseByThread[threadID] = .thinking
+        }
     }
 
     func turnInterrupt(threadID: String, turnID: String) async throws {
@@ -701,17 +965,14 @@ final class AppServerClient: ObservableObject {
             "turnId": .string(turnID),
         ])
         _ = try await self.request(method: "turn/interrupt", params: params)
-        if self.activeTurnIDByThread[threadID] == turnID {
-            self.activeTurnIDByThread.removeValue(forKey: threadID)
-        }
-        self.turnStreamingPhaseByThread.removeValue(forKey: threadID)
-        self.endBackgroundProcessingIfIdle()
+        // The acknowledgement only accepts the request; completion is a later event or snapshot.
     }
 
     func respondCommandApproval(
         request: AppServerPendingRequest,
         decision: AppServerCommandApprovalDecisionResponse
     ) async throws {
+        try Self.validateOfficialCommandDecision(request: request, decision: decision)
         let result: JSONValue = .object(["decision": decision.jsonValue])
         try await self.respond(to: request, result: result)
     }
@@ -728,6 +989,7 @@ final class AppServerClient: ObservableObject {
         request: AppServerPendingRequest,
         answers: [String: [String]]
     ) async throws {
+        try Self.validateOfficialUserInput(request: request, answers: answers)
         let answerObject = Dictionary(uniqueKeysWithValues: answers.map { key, values in
             (
                 key,
@@ -749,8 +1011,17 @@ final class AppServerClient: ObservableObject {
             expectedAuthentication: host.appServerAuthentication
         )
 
-        self.reconnectTask?.cancel()
+        if resetReconnectAttempts {
+            self.reconnectTask?.cancel()
+            self.reconnectTask = nil
+        }
         self.teardownConnection(closeCode: .normalClosure)
+        let generation = self.connectionGeneration
+
+        if self.lastHost?.id != host.id || self.lastHost?.appServerURL != host.appServerURL {
+            self.transcriptByThread.removeAll()
+            self.rateLimits.removeAll()
+        }
 
         if resetReconnectAttempts {
             self.reconnectAttempts = 0
@@ -788,7 +1059,8 @@ final class AppServerClient: ObservableObject {
                 ]
                 if includeExperimentalCapability {
                     payload["capabilities"] = .object([
-                        "experimentalApi": .bool(true)
+                        "experimentalApi": .bool(true),
+                        "requiredHumanApproval": .bool(true)
                     ])
                 }
                 return .object(payload)
@@ -801,6 +1073,7 @@ final class AppServerClient: ObservableObject {
                     params: initializeParams(includeExperimentalCapability: true)
                 )
             } catch {
+                guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
                 guard Self.shouldRetryInitializeWithoutCapabilities(error) else {
                     throw error
                 }
@@ -810,12 +1083,14 @@ final class AppServerClient: ObservableObject {
                     params: initializeParams(includeExperimentalCapability: false)
                 )
             }
+            guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
             self.applyInitializeMetadata(from: initializeResult)
             try await self.sendEnvelope(
                 JSONRPCEnvelope(
                     method: "initialized"
                 )
             )
+            guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
             if let cliVersion = self.nonEmptyOrNil(self.diagnostics.cliVersion),
                !Self.isVersion(cliVersion, atLeast: Self.minimumSupportedCLIVersion) {
                 throw AppServerClientError.incompatibleVersion(
@@ -827,11 +1102,13 @@ final class AppServerClient: ObservableObject {
             self.diagnostics.reconnectAttemptCount = 0
             self.transition(to: .connected, endpoint: url.absoluteString)
             Task { @MainActor [weak self] in
-                await self?.refreshCatalogs(primaryCWD: nil)
+                guard let self, generation == self.connectionGeneration else { return }
+                await self.refreshCatalogs(primaryCWD: nil)
             }
             self.diagnostics.lastCheckedAt = Date()
             self.appendEvent("Connected: \(host.name) @ \(url.absoluteString)")
         } catch {
+            guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
             self.transition(
                 to: .failed,
                 endpoint: url.absoluteString,
@@ -842,11 +1119,17 @@ final class AppServerClient: ObservableObject {
         }
     }
 
-    private func request(method: String, params: JSONValue?) async throws -> JSONValue {
+    func request(method: String, params: JSONValue?) async throws -> JSONValue {
+        if let override = self.requestOverrideForTesting { return try await override(method, params) }
+        let generation = self.connectionGeneration
         var attempt = 0
         while true {
+            try Task.checkCancellation()
+            guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
             do {
-                return try await self.requestOnce(method: method, params: params)
+                let result = try await self.requestOnce(method: method, params: params)
+                guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
+                return result
             } catch let AppServerClientError.remote(code, message) where code == -32001 {
                 guard attempt < self.overloadRetryMaxAttempts - 1 else {
                     self.recordRPCError(
@@ -861,7 +1144,7 @@ final class AppServerClient: ObservableObject {
                 let delaySeconds = baseDelaySeconds + jitterSeconds
                 self.appendEvent("Server overloaded; retrying \(method) in \(String(format: "%.2f", delaySeconds))s")
 
-                try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+                try await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
                 attempt += 1
                 continue
             } catch {
@@ -879,7 +1162,9 @@ final class AppServerClient: ObservableObject {
             throw AppServerClientError.notConnected
         }
 
+        let generation = self.connectionGeneration
         let requestID = await self.router.makeRequestID()
+        guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
         let idValue: JSONValue = .number(Double(requestID))
         let idKey = String(requestID)
         let envelope = JSONRPCEnvelope(id: idValue, method: method, params: params)
@@ -891,9 +1176,10 @@ final class AppServerClient: ObservableObject {
                     return
                 }
 
-                await self.router.storeContinuation(continuation, for: idKey)
+                await self.router.storeContinuation(continuation, for: idKey, generation: generation)
 
                 do {
+                    guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
                     try await self.sendEnvelope(envelope)
                 } catch {
                     if let pending = await self.router.removeContinuation(for: idKey) {
@@ -914,14 +1200,25 @@ final class AppServerClient: ObservableObject {
         }
     }
 
-    private func respond(to request: AppServerPendingRequest, result: JSONValue) async throws {
-        try await self.sendEnvelope(
-            JSONRPCEnvelope(
-                id: request.rpcID,
-                result: result
+    func respond(to request: AppServerPendingRequest, result: JSONValue) async throws {
+        guard self.pendingRequests.contains(where: {
+            $0.instanceID == request.instanceID && $0.requestIDKey == request.requestIDKey && $0.rpcID == request.rpcID
+        }), self.respondingRequestIDs.insert(request.instanceID).inserted else {
+            throw AppServerOfficialRequestError.requestResolved
+        }
+        let generation = self.connectionGeneration
+        defer {
+            if generation == self.connectionGeneration { self.respondingRequestIDs.remove(request.instanceID) }
+        }
+        if let override = self.responseOverrideForTesting {
+            try await override(request, result)
+        } else {
+            try await self.sendEnvelope(
+                JSONRPCEnvelope(id: request.rpcID, result: result)
             )
-        )
-        self.pendingRequests.removeAll(where: { $0.requestIDKey == request.requestIDKey })
+        }
+        guard generation == self.connectionGeneration else { throw CodexOfficialError.connectionChanged }
+        self.pendingRequests.removeAll(where: { $0.instanceID == request.instanceID })
     }
 
     private func sendEnvelope(_ envelope: JSONRPCEnvelope) async throws {
@@ -939,19 +1236,21 @@ final class AppServerClient: ObservableObject {
 
     private func startReceiveLoop() {
         self.receiveTask?.cancel()
+        let generation = self.connectionGeneration
         self.receiveTask = Task { @MainActor [weak self] in
             guard let self else { return }
 
             while !Task.isCancelled {
-                guard let webSocketTask = self.webSocketTask else {
+                guard generation == self.connectionGeneration, let webSocketTask = self.webSocketTask else {
                     return
                 }
 
                 do {
                     let message = try await webSocketTask.receive()
+                    guard !Task.isCancelled, generation == self.connectionGeneration else { return }
                     try await self.handleIncoming(message)
                 } catch {
-                    if Task.isCancelled {
+                    if Task.isCancelled || generation != self.connectionGeneration {
                         return
                     }
                     await self.handleSocketFailure(error)
@@ -963,6 +1262,7 @@ final class AppServerClient: ObservableObject {
 
     private func startPingLoop() {
         self.pingTask?.cancel()
+        let generation = self.connectionGeneration
         self.pingTask = Task { @MainActor [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
@@ -970,15 +1270,17 @@ final class AppServerClient: ObservableObject {
                 if Task.isCancelled {
                     return
                 }
-                guard let webSocketTask = self.webSocketTask else {
+                guard generation == self.connectionGeneration, let webSocketTask = self.webSocketTask else {
                     return
                 }
 
                 do {
                     let startedAt = Date()
                     try await webSocketTask.sendPingAsync()
+                    guard !Task.isCancelled, generation == self.connectionGeneration else { return }
                     self.markSuccessfulPing(latencyMS: Date().timeIntervalSince(startedAt) * 1000)
                 } catch {
+                    guard !Task.isCancelled, generation == self.connectionGeneration else { return }
                     await self.handleSocketFailure(error)
                     return
                 }
@@ -1028,7 +1330,15 @@ final class AppServerClient: ObservableObject {
     }
 
     private func handleNotification(method: String, params: JSONValue?) {
+        if self.handleOfficialNotification(method: method, params: params) { return }
         let paramsObject = params?.objectValue ?? [:]
+        if method != "turn/started", method.hasPrefix("turn/") || method.hasPrefix("item/") || method == "thread/tokenUsage/updated",
+           let threadID = paramsObject["threadId"]?.stringValue,
+           let turnID = Self.findString(in: paramsObject, paths: [["turnId"], ["turn", "id"]]),
+           let latest = self.activeTurnIDByThread[threadID] ?? self.latestTurnIDByThread[threadID], latest != turnID {
+            // Turn IDs are opaque. An event for another observed turn cannot own the current turn's state.
+            return
+        }
 
         switch method {
         case "item/agentMessage/delta", "item/commandExecution/outputDelta":
@@ -1039,6 +1349,7 @@ final class AppServerClient: ObservableObject {
             }
             let existing = self.transcriptByThread[threadID] ?? ""
             self.transcriptByThread[threadID] = existing + delta
+            self.transcriptRevisionByThread[threadID, default: 0] &+= 1
             self.turnStreamingPhaseByThread[threadID] = .responding
 
         case "item/plan/delta":
@@ -1131,6 +1442,8 @@ final class AppServerClient: ObservableObject {
                let turn = paramsObject["turn"]?.objectValue,
                let turnID = turn["id"]?.stringValue {
                 self.activeTurnIDByThread[threadID] = turnID
+                self.latestTurnIDByThread[threadID] = turnID
+                self.turnStateRevisionByThread[threadID, default: 0] &+= 1
                 if self.turnStreamingPhaseByThread[threadID] != .responding {
                     self.turnStreamingPhaseByThread[threadID] = .thinking
                 }
@@ -1143,6 +1456,10 @@ final class AppServerClient: ObservableObject {
                 return
             }
             let turn = paramsObject["turn"]?.objectValue ?? [:]
+            let completedTurnID = turn["id"]?.stringValue ?? paramsObject["turnId"]?.stringValue
+                ?? self.activeTurnIDByThread[threadID]
+            self.turnStateRevisionByThread[threadID, default: 0] &+= 1
+            if let completedTurnID { self.latestTurnIDByThread[threadID] = completedTurnID }
             let status = turn["status"]?.stringValue
                 ?? method.split(separator: "/").last.map(String.init)
                 ?? "completed"
@@ -1159,6 +1476,9 @@ final class AppServerClient: ObservableObject {
 
             self.activeTurnIDByThread.removeValue(forKey: threadID)
             self.turnStreamingPhaseByThread.removeValue(forKey: threadID)
+            if let completedTurnID {
+                self.pendingRequests.removeAll(where: { $0.threadID == threadID && $0.turnID == completedTurnID })
+            }
             self.clearStreamedItemPrefixKeys(for: threadID)
             self.endBackgroundProcessingIfIdle()
 
@@ -1179,43 +1499,15 @@ final class AppServerClient: ObservableObject {
             guard let threadID = paramsObject["threadId"]?.stringValue else {
                 return
             }
-            let usageObject = paramsObject["tokenUsage"]?.objectValue ?? paramsObject
-            let usedTokens = Self.findInt(
-                in: usageObject,
-                paths: [
-                    ["inputTokens"],
-                    ["usedTokens"],
-                    ["usedInputTokens"],
-                    ["usage", "used"],
-                ]
-            )
-            let maxTokens = Self.findInt(
-                in: usageObject,
-                paths: [
-                    ["maxInputTokens"],
-                    ["contextWindow", "maxTokens"],
-                    ["limit"],
-                    ["maxTokens"],
-                    ["usage", "limit"],
-                ]
-            )
-            let remainingTokens = Self.findInt(
-                in: usageObject,
-                paths: [
-                    ["remainingInputTokens"],
-                    ["contextWindow", "remainingTokens"],
-                    ["remainingTokens"],
-                    ["remaining"],
-                    ["usage", "remaining"],
-                ]
-            )
+            self.contextUsageByThread[threadID] = Self.parseContextUsage(paramsObject)
 
-            self.contextUsageByThread[threadID] = AppServerContextUsageSummary(
-                usedTokens: usedTokens,
-                maxTokens: maxTokens,
-                remainingTokens: remainingTokens,
-                updatedAt: Date()
-            )
+        case "thread/status/changed":
+            if let threadID = paramsObject["threadId"]?.stringValue, let raw = paramsObject["status"],
+               let status = try? self.decode(raw, as: AppServerThreadStatus.self) {
+                self.statusRevisionByThread[threadID, default: 0] &+= 1
+                self.lastReportedStatusByThread[threadID] = status
+                self.threadRecordsByID[threadID]?.status = status
+            }
 
         case "account/rateLimits/updated":
             var parsed = Self.parseRateLimitCatalog(.object(paramsObject))
@@ -1250,6 +1542,9 @@ final class AppServerClient: ObservableObject {
         case "thread/started":
             if let thread = paramsObject["thread"]?.objectValue,
                let threadID = thread["id"]?.stringValue {
+                if let metadata = try? self.decode(.object(thread), as: ThreadReadThreadPayload.self) {
+                    self.rememberThread(Self.threadRecord(metadata, existing: self.threadRecordsByID[threadID]))
+                }
                 self.appendEvent("Thread started: \(threadID)")
             }
 
@@ -1296,6 +1591,7 @@ final class AppServerClient: ObservableObject {
 
         existing.append(delta)
         self.transcriptByThread[threadID] = existing
+        self.transcriptRevisionByThread[threadID, default: 0] &+= 1
     }
 
     private func clearStreamedItemPrefixKeys(for threadID: String) {
@@ -1312,7 +1608,8 @@ final class AppServerClient: ObservableObject {
         self.handleServerRequest(id: id, method: method, params: params)
     }
 
-    func setStateForTesting(_ state: State) {
+    func setStateForTesting(_ state: State, host: RemoteHost? = nil) {
+        if let host { self.lastHost = host }
         self.transition(to: state)
     }
 
@@ -1326,6 +1623,7 @@ final class AppServerClient: ObservableObject {
 
     private func parsePendingRequest(id: JSONValue, method: String, params: JSONValue?) -> AppServerPendingRequest {
         let paramsObject = params?.objectValue ?? [:]
+        if let official = Self.parseOfficialRequest(id: id, method: method, params: paramsObject) { return official }
         let threadID = Self.findString(in: paramsObject, paths: [["threadId"], ["thread_id"]]) ?? ""
         let turnID = Self.findString(in: paramsObject, paths: [["turnId"], ["turn_id"]]) ?? ""
         let itemID = Self.findString(in: paramsObject, paths: [["itemId"], ["item_id"]]) ?? ""
@@ -1490,16 +1788,18 @@ final class AppServerClient: ObservableObject {
         self.transition(to: .reconnecting, endpoint: endpoint, errorMessage: failureMessage)
 
         self.reconnectTask?.cancel()
+        let generation = self.connectionGeneration
         self.reconnectTask = Task { @MainActor [weak self] in
             guard let self else { return }
             try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
-            if Task.isCancelled {
+            if Task.isCancelled || generation != self.connectionGeneration || !self.autoReconnectEnabled {
                 return
             }
 
             do {
                 try await self.openConnection(to: host, resetReconnectAttempts: false)
             } catch {
+                guard !Task.isCancelled, self.autoReconnectEnabled, self.lastHost == host else { return }
                 await self.handleSocketFailure(error)
             }
         }
@@ -1514,6 +1814,28 @@ final class AppServerClient: ObservableObject {
     }
 
     private func teardownConnection(closeCode: URLSessionWebSocketTask.CloseCode) {
+        let generation = self.connectionGeneration
+        self.connectionGeneration &+= 1
+        self.threadRecordsByID.removeAll()
+        self.threadGoalsByID.removeAll()
+        self.threadPlansByID.removeAll()
+        self.threadDiffsByID.removeAll()
+        self.threadNamesByID.removeAll()
+        self.compactingThreads.removeAll()
+        self.unsupportedOfficialMethods.removeAll()
+        self.goalRevisionByThread.removeAll()
+        self.threadNameRevisionByThread.removeAll()
+        self.compactionAcknowledgedThreads.removeAll()
+        self.turnStateRevisionByThread.removeAll()
+        self.transcriptRevisionByThread.removeAll()
+        self.statusRevisionByThread.removeAll()
+        self.lastReportedStatusByThread.removeAll()
+        self.latestTurnIDByThread.removeAll()
+        self.respondingRequestIDs.removeAll()
+        self.activeTurnIDByThread.removeAll()
+        self.turnStreamingPhaseByThread.removeAll()
+        self.transcriptSnapshotBeforeTurn.removeAll()
+        self.contextUsageByThread.removeAll()
         self.receiveTask?.cancel()
         self.receiveTask = nil
 
@@ -1527,7 +1849,7 @@ final class AppServerClient: ObservableObject {
         self.streamedItemPrefixKeys.removeAll()
 
         Task {
-            await self.router.failAll(with: AppServerClientError.notConnected)
+            await self.router.failAll(with: AppServerClientError.notConnected, generation: generation)
         }
     }
 
@@ -1607,6 +1929,7 @@ final class AppServerClient: ObservableObject {
             return
         }
 
+        let generation = self.connectionGeneration
         async let fetchedModels = self.fetchModelCatalog()
         async let fetchedCollaborationModes = self.fetchCollaborationModeCatalog()
         async let fetchedSkills = self.fetchSkillCatalog(primaryCWD: primaryCWD)
@@ -1618,6 +1941,7 @@ final class AppServerClient: ObservableObject {
             fetchedSkills,
             fetchedApps
         )
+        guard generation == self.connectionGeneration, self.state == .connected else { return }
 
         if let modelCatalog {
             self.availableModels = modelCatalog

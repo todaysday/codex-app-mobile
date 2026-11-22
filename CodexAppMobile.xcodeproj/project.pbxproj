@@ -48,6 +48,20 @@
 		C58B495A368A9650CCB42ABF /* AppServerConnectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCA9572EF491134EB158410A /* AppServerConnectionTests.swift */; };
 		3C641DD5B58995DFF16C1F3A /* Attribution in Resources */ = {isa = PBXBuildFile; fileRef = 0389DE4A4DE8028E230C843C /* Attribution */; };
 		4B13706978C3088E6BCD97D2 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 0EE02BAD0E548ADE9F12E1B1 /* PrivacyInfo.xcprivacy */; };
+		DE5A2B769230429444E0FBED /* AppServerOfficialControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE9D15046460567F3C27A6C0 /* AppServerOfficialControls.swift */; };
+		4FCD09929EFE39719CA2BC28 /* AppServerOfficialRequests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7649A97B89DB6A37904F1318 /* AppServerOfficialRequests.swift */; };
+		863E3B8682341C938A4AE3ED /* CodexOfficialModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CF8111D23B9EDE9980DFE18 /* CodexOfficialModels.swift */; };
+		66EA5696A4614F9A3FE1D905 /* CodexOfficialRequestModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CBF6A0E6C530E8CB373C90E /* CodexOfficialRequestModels.swift */; };
+		36483AFD05597B51234666ED /* CodexSubagentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F654E1DC94E288942B60C92 /* CodexSubagentsView.swift */; };
+		56FE6321A733F570BA05DE28 /* CodexThreadControlPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B6BF271E6197EFD152017DB /* CodexThreadControlPolicy.swift */; };
+		DE00C395547EFD5EA589C568 /* CodexThreadControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B531715487243C9E67E772E8 /* CodexThreadControlsView.swift */; };
+		59EA576EAB3FA1BDA8D45201 /* CodexThreadDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BDA1DC1B7C5C01B2878AF15 /* CodexThreadDetailsView.swift */; };
+		EEB324EC73C20176F852601D /* CodexOfficialControlsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CCA23D66B0C0B0EDB816A75 /* CodexOfficialControlsTests.swift */; };
+		C68C9FA3A0CDE04187FE5C8F /* CodexOfficialUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E754C97C7C48D7CD0D86D0B5 /* CodexOfficialUITests.swift */; };
+		1144FAEF59E9152FAE7AFF8D /* OfficialProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88684CD3A248E617D47FE9C7 /* OfficialProtocolTests.swift */; };
+		D39E156717F2514BEBC2117B /* OfficialRequestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C413D1453E79E4D15CF51668 /* OfficialRequestTests.swift */; };
+		F03B9E907DAED01B6CB8BB7B /* CodexComposerDraftStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85E4C887A09BFD2327954080 /* CodexComposerDraftStore.swift */; };
+		5A1405C7A70AC947AA780F1E /* CodexComposerDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB6140DDC49CD291389DCA2C /* CodexComposerDraftTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -103,6 +117,20 @@
 		CCA9572EF491134EB158410A /* AppServerConnectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServerConnectionTests.swift; sourceTree = "<group>"; };
 		0389DE4A4DE8028E230C843C /* Attribution */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources/Attribution; sourceTree = "<group>"; };
 		0EE02BAD0E548ADE9F12E1B1 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		FE9D15046460567F3C27A6C0 /* AppServerOfficialControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Orchestration/AppServerOfficialControls.swift; sourceTree = "<group>"; };
+		7649A97B89DB6A37904F1318 /* AppServerOfficialRequests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Orchestration/AppServerOfficialRequests.swift; sourceTree = "<group>"; };
+		1CF8111D23B9EDE9980DFE18 /* CodexOfficialModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Orchestration/CodexOfficialModels.swift; sourceTree = "<group>"; };
+		1CBF6A0E6C530E8CB373C90E /* CodexOfficialRequestModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Orchestration/CodexOfficialRequestModels.swift; sourceTree = "<group>"; };
+		5F654E1DC94E288942B60C92 /* CodexSubagentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Orchestration/CodexSubagentsView.swift; sourceTree = "<group>"; };
+		6B6BF271E6197EFD152017DB /* CodexThreadControlPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Orchestration/CodexThreadControlPolicy.swift; sourceTree = "<group>"; };
+		B531715487243C9E67E772E8 /* CodexThreadControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Orchestration/CodexThreadControlsView.swift; sourceTree = "<group>"; };
+		6BDA1DC1B7C5C01B2878AF15 /* CodexThreadDetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Orchestration/CodexThreadDetailsView.swift; sourceTree = "<group>"; };
+		7CCA23D66B0C0B0EDB816A75 /* CodexOfficialControlsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexOfficialControlsTests.swift; sourceTree = "<group>"; };
+		E754C97C7C48D7CD0D86D0B5 /* CodexOfficialUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexOfficialUITests.swift; sourceTree = "<group>"; };
+		88684CD3A248E617D47FE9C7 /* OfficialProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficialProtocolTests.swift; sourceTree = "<group>"; };
+		C413D1453E79E4D15CF51668 /* OfficialRequestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficialRequestTests.swift; sourceTree = "<group>"; };
+		85E4C887A09BFD2327954080 /* CodexComposerDraftStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Orchestration/CodexComposerDraftStore.swift; sourceTree = "<group>"; };
+		AB6140DDC49CD291389DCA2C /* CodexComposerDraftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexComposerDraftTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -147,6 +175,15 @@
 		A1B2C3D4E5F6010000000007 /* CodexAppMobile */ = {
 			isa = PBXGroup;
 				children = (
+				85E4C887A09BFD2327954080 /* CodexComposerDraftStore.swift */,
+				6BDA1DC1B7C5C01B2878AF15 /* CodexThreadDetailsView.swift */,
+				B531715487243C9E67E772E8 /* CodexThreadControlsView.swift */,
+				6B6BF271E6197EFD152017DB /* CodexThreadControlPolicy.swift */,
+				5F654E1DC94E288942B60C92 /* CodexSubagentsView.swift */,
+				1CBF6A0E6C530E8CB373C90E /* CodexOfficialRequestModels.swift */,
+				1CF8111D23B9EDE9980DFE18 /* CodexOfficialModels.swift */,
+				7649A97B89DB6A37904F1318 /* AppServerOfficialRequests.swift */,
+				FE9D15046460567F3C27A6C0 /* AppServerOfficialControls.swift */,
 				9E7381772D2A73E79EE2B8D5 /* AppShellView.swift */,
 				EB1C58975B57264333776EB7 /* AppSettingsView.swift */,
 				427AD64EB11CB15520483EA6 /* ChatGPTWebViewModel.swift */,
@@ -190,6 +227,11 @@
 		A1B2C3D4E5F6010000000008 /* CodexAppMobileTests */ = {
 			isa = PBXGroup;
 			children = (
+				AB6140DDC49CD291389DCA2C /* CodexComposerDraftTests.swift */,
+				C413D1453E79E4D15CF51668 /* OfficialRequestTests.swift */,
+				88684CD3A248E617D47FE9C7 /* OfficialProtocolTests.swift */,
+				E754C97C7C48D7CD0D86D0B5 /* CodexOfficialUITests.swift */,
+				7CCA23D66B0C0B0EDB816A75 /* CodexOfficialControlsTests.swift */,
 				1BDEA1033B5CB10A799179AA /* AppNavigationTests.swift */,
 				E45725D620F1D02538933ABB /* ChatGPTWebTests.swift */,
 				CCA9572EF491134EB158410A /* AppServerConnectionTests.swift */,
@@ -315,6 +357,15 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 				files = (
+				F03B9E907DAED01B6CB8BB7B /* CodexComposerDraftStore.swift in Sources */,
+				59EA576EAB3FA1BDA8D45201 /* CodexThreadDetailsView.swift in Sources */,
+				DE00C395547EFD5EA589C568 /* CodexThreadControlsView.swift in Sources */,
+				56FE6321A733F570BA05DE28 /* CodexThreadControlPolicy.swift in Sources */,
+				36483AFD05597B51234666ED /* CodexSubagentsView.swift in Sources */,
+				66EA5696A4614F9A3FE1D905 /* CodexOfficialRequestModels.swift in Sources */,
+				863E3B8682341C938A4AE3ED /* CodexOfficialModels.swift in Sources */,
+				4FCD09929EFE39719CA2BC28 /* AppServerOfficialRequests.swift in Sources */,
+				DE5A2B769230429444E0FBED /* AppServerOfficialControls.swift in Sources */,
 				19937AC699AF815618A962C3 /* AppShellView.swift in Sources */,
 				7823003C18FA3EF8647C0E1E /* AppSettingsView.swift in Sources */,
 				731FEC640563ED7062AEF060 /* ChatGPTWebViewModel.swift in Sources */,
@@ -352,6 +403,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A1405C7A70AC947AA780F1E /* CodexComposerDraftTests.swift in Sources */,
+				D39E156717F2514BEBC2117B /* OfficialRequestTests.swift in Sources */,
+				1144FAEF59E9152FAE7AFF8D /* OfficialProtocolTests.swift in Sources */,
+				C68C9FA3A0CDE04187FE5C8F /* CodexOfficialUITests.swift in Sources */,
+				EEB324EC73C20176F852601D /* CodexOfficialControlsTests.swift in Sources */,
 				FC9C29647980D1B39519EAC0 /* AppNavigationTests.swift in Sources */,
 				514E1B2D1350A4BF0A4867E2 /* ChatGPTWebTests.swift in Sources */,
 				C58B495A368A9650CCB42ABF /* AppServerConnectionTests.swift in Sources */,

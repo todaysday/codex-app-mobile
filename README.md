@@ -4,7 +4,7 @@ A standalone SwiftUI iPhone app for your **existing Codex App Server**, with a s
 
 This project extends [shuto-S/codex-app-mobile](https://github.com/shuto-S/codex-app-mobile), preserving its Codex interface and SSH fallback. [Akuma1tko/ChatGPT-WebView](https://github.com/Akuma1tko/ChatGPT-WebView) is the minimal web-companion reference. Exact source revisions and reuse decisions are in [UPSTREAM.md](docs/UPSTREAM.md).
 
-**Delivery status:** the companion implementation and unsigned build workflow are in `todaysday/codex-app-mobile`. GitHub Actions compilation, downloadable IPA and physical-device acceptance are recorded separately; source validation alone does not establish those gates. See [implementation tasks](openspec/changes/add-chatgpt-web-companion/tasks.md) and [device acceptance](docs/DEVICE_ACCEPTANCE.md) for recorded status.
+**Delivery status:** the native companion, official Codex protocol additions, and unsigned build workflow are in `todaysday/codex-app-mobile`. GitHub Actions compilation, downloadable IPA and physical-device acceptance are recorded separately; source validation alone does not establish those gates. See the [MVP tasks](openspec/changes/add-chatgpt-web-companion/tasks.md), [official-controls tasks](openspec/changes/add-official-codex-controls/tasks.md), and [device acceptance](docs/DEVICE_ACCEPTANCE.md) for recorded status.
 
 ## What is included
 
@@ -15,6 +15,26 @@ This project extends [shuto-S/codex-app-mobile](https://github.com/shuto-S/codex
 | **Settings** | Access to the existing host configuration, ChatGPT data/diagnostics, app version/build identity, and attribution. |
 
 The ChatGPT website decides which features the signed-in account receives. The user's actual Google, Apple, email, or passkey login and required Pro/web functionality must be verified on the iPhone. A functioning Safari fallback does not prove that embedded login works.
+
+## Controls adapted from official Codex
+
+The protocol baseline is [Codex 0.171.0](https://github.com/openai/codex/releases/tag/rust-v0.171.0). The [source review](docs/OFFICIAL_CODEX_REVIEW.md) records exact source revisions, contracts, compatibility limits, and reuse decisions.
+
+Open a Codex thread and use its header menu:
+
+| Control | Behavior |
+| --- | --- |
+| **Thread Controls → Goal** | Read or edit the objective and token budget, pause/resume, mark complete, or explicitly clear the goal. Shows the server's status, tokens, and elapsed time. |
+| **Thread Controls → Thread Actions** | Rename the thread, request context compaction, or select a real turn and confirm removal of that turn and later conversation history. History revert does **not** undo changes to files. |
+| **Subagents** | Browse reported parent/child relationships, roles, status, and child messages. Return to the parent workbench without creating a session or sending a prompt. |
+| **Current Turn** | Inspect the structured plan, latest aggregate server diff, and separate latest/cumulative token counters. |
+| **Model details** | Show the connected server's advertised description, supported inputs, reasoning choices, and available service tiers. Model names are not hardcoded. |
+
+Thread discovery follows all returned pages and includes official source kinds where supported. Read/resume restores complete history and the known active turn. Follow-ups steer that exact turn; an interrupt remains pending until the server reports completion. Older servers keep their supported behavior and show unavailable optional controls explicitly.
+
+Approval sheets preserve the server's actual choices, including human checkpoints and scoped permission grants. Unsupported permission shapes cannot be granted. Secret answers use masked input, and free-form answers retain their literal text. A stale sheet cannot approve a new request that reuses an earlier request ID.
+
+Composer drafts belong to their host, workspace, and thread. They retain text and context tokens while navigating within the app; submitted requests retain their original target and settings through reconnects. Failed inputs remain recoverable in their source thread. Drafts are held in memory and do not survive process termination. See the [composer specification](openspec/changes/fix-thread-scoped-composer/specs/scoped-composer/spec.md).
 
 ## Requirements
 
@@ -114,7 +134,8 @@ The application uses SwiftUI, Swift Concurrency, WebKit, URLSession, and the ups
 - [MVP proposal](openspec/changes/add-chatgpt-web-companion/proposal.md), [design](openspec/changes/add-chatgpt-web-companion/design.md), and [tasks](openspec/changes/add-chatgpt-web-companion/tasks.md)
 - Capability specifications: [app shell](openspec/changes/add-chatgpt-web-companion/specs/app-shell/spec.md), [isolated ChatGPT Web](openspec/changes/add-chatgpt-web-companion/specs/isolated-chatgpt-web/spec.md), [existing Codex connection](openspec/changes/add-chatgpt-web-companion/specs/secure-existing-codex/spec.md), [unsigned distribution](openspec/changes/add-chatgpt-web-companion/specs/unsigned-ios-distribution/spec.md)
 - [Physical device acceptance and unresolved gates](docs/DEVICE_ACCEPTANCE.md)
-- [Goal Mode, subagents, and workbench roadmap proposals](docs/ROADMAP.md)
+- [Official Codex source review](docs/OFFICIAL_CODEX_REVIEW.md), [controls proposal](openspec/changes/add-official-codex-controls/proposal.md), and [capability roadmap](docs/ROADMAP.md)
+- [Thread-scoped composer proposal and tasks](openspec/changes/fix-thread-scoped-composer/proposal.md)
 - [Original user handoff](docs/handoff/Codex_ChatGPT_Mobile_Handoff.md)
 
 On 2026-11-22 the user additionally authorized implementing suitable features from the current official Codex. Those features are a separate specification and implementation slice; real-device acceptance remains independently required for the browser and installation.
@@ -140,4 +161,4 @@ docs/                         # provenance, physical acceptance, and roadmap
 
 Follow [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTING.md). Existing security reporting guidance is in [SECURITY.md](SECURITY.md).
 
-The base application is MIT licensed; its copyright/permission notice remains in [LICENSE](LICENSE). The donor MIT notice is preserved in [ChatGPT-WebView-MIT.txt](docs/licenses/ChatGPT-WebView-MIT.txt). [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) lists dependency attributions. Distribution packaging also carries the license and NOTICE files from the actual pinned SwiftPM checkouts inside the app bundle.
+The base application is MIT licensed; its copyright/permission notice remains in [LICENSE](LICENSE). The donor MIT notice is preserved in [ChatGPT-WebView-MIT.txt](docs/licenses/ChatGPT-WebView-MIT.txt). Official Codex's [Apache 2.0 license](docs/licenses/OpenAI-Codex-APACHE-2.0.txt) and [NOTICE](docs/licenses/OpenAI-Codex-NOTICE.txt) accompany the protocol adaptation. [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) lists dependency attributions. Distribution packaging also carries the license and NOTICE files from the actual pinned SwiftPM checkouts inside the app bundle.

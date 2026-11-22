@@ -57,11 +57,7 @@ struct SessionWorkbenchView: View {
         let updatedAt: Date
     }
 
-    struct ComposerTokenBadge: Identifiable, Equatable {
-        let id: String
-        let token: String
-        let title: String
-    }
+    typealias ComposerTokenBadge = CodexComposerContextToken
 
     struct ChatScrollSnapshot: Equatable {
         let distanceFromBottom: CGFloat
@@ -76,6 +72,15 @@ struct SessionWorkbenchView: View {
 
     struct GitOperationSheetContext: Identifiable, Equatable {
         let id = UUID()
+    }
+
+    struct OfficialThreadPanel: Identifiable {
+        enum Kind: String { case controls, subagents }
+        let kind: Kind
+        let threadID: String
+        let title: String
+        let modelID: String?
+        var id: String { "\(kind.rawValue):\(threadID)" }
     }
 
     enum GitDiffLoadState: Equatable {
@@ -95,6 +100,8 @@ struct SessionWorkbenchView: View {
     @State var selectedWorkspaceID: UUID?
     @State var selectedThreadID: String?
     @State var prompt = ""
+    @State var loadedComposerScope: CodexComposerDraftScope?
+    @State var isComposerViewVisible = false
     @State var isRefreshingThreads = false
     @State var isRunningSSHAction = false
     @State var isRunningGitAction = false
@@ -102,6 +109,9 @@ struct SessionWorkbenchView: View {
     @State var editingWorkspace: ProjectWorkspace?
     @State var workspacePendingDeletion: ProjectWorkspace?
     @State var activePendingRequest: AppServerPendingRequest?
+    @State var officialThreadPanel: OfficialThreadPanel?
+    @State var selectedThreadDirectInputAllowed = true
+    @State var confirmedThreadName: String?
     @State var sshTranscriptByThread: [String: String] = [:]
     @State var parsedChatMessages: [SessionChatMessage] = []
     @State var lastParsedThreadID: String?
@@ -135,7 +145,6 @@ struct SessionWorkbenchView: View {
     @State var composerInfoMessage: ComposerInfoMessage?
     @State var selectedComposerTokenBadges: [ComposerTokenBadge] = []
     @State var dismissedPendingUserInputScopeKeys: Set<String> = []
-    @State var pendingPromptDispatchCount = 0
     @State var chatDistanceFromBottom: CGFloat = 0
     @State var lastChatScrollSnapshot: ChatScrollSnapshot?
     @State var isChatAutoFollowEnabled = true
@@ -168,6 +177,17 @@ struct SessionWorkbenchView: View {
         return self.workspaces.first(where: { $0.id == selectedWorkspaceID })
     }
 
+    var composerScope: CodexComposerDraftScope? {
+        guard let selectedWorkspaceID else { return nil }
+        return CodexComposerDraftScope(
+            hostID: self.host.id, workspaceID: selectedWorkspaceID, threadID: self.selectedThreadID
+        )
+    }
+
+    var currentComposerDraft: CodexComposerDraft {
+        CodexComposerDraft(text: self.prompt, contextTokens: self.selectedComposerTokenBadges)
+    }
+
     var workspaces: [ProjectWorkspace] {
         self.appState.projectStore.workspaces(for: self.host.id)
     }
@@ -192,6 +212,7 @@ struct SessionWorkbenchView: View {
     }
 
     var selectedThreadTitle: String {
+        if let confirmedThreadName, !confirmedThreadName.isEmpty { return confirmedThreadName }
         guard let summary = self.selectedThreadSummary else {
             return L10n.text("New Thread")
         }
@@ -239,6 +260,8 @@ struct SessionWorkbenchView: View {
 
     var canSendPrompt: Bool {
         !self.isPromptEmpty
+            && self.selectedThreadDirectInputAllowed
+            && !self.isAwaitingPromptDispatch
             && !self.isRunningSSHAction
             && !self.isRunningGitAction
             && self.selectedWorkspace != nil
@@ -246,6 +269,7 @@ struct SessionWorkbenchView: View {
 
     var canInterruptActiveTurn: Bool {
         guard !self.isSSHTransport,
+              self.selectedThreadDirectInputAllowed,
               let selectedThreadID else {
             return false
         }
@@ -330,6 +354,7 @@ struct SessionWorkbenchView: View {
 
     var isComposerInteractive: Bool {
         !self.isRunningSSHAction && !self.isRunningGitAction && self.selectedWorkspace != nil
+            && self.selectedThreadDirectInputAllowed
     }
 
     var fallbackReasoningEffortOptions: [CodexReasoningEffortOption] {
@@ -373,9 +398,6 @@ struct SessionWorkbenchView: View {
         appendIfNeeded(self.selectedComposerModel)
         appendIfNeeded(self.selectedWorkspace?.defaultModel ?? "", isDefault: true)
         appendIfNeeded(self.appState.appServerClient.diagnostics.currentModel, isDefault: true)
-        appendIfNeeded("gpt-5.3-codex", displayName: "GPT-5.3-Codex")
-        appendIfNeeded("gpt-5.2-codex", displayName: "GPT-5.2-Codex")
-
         return options
     }
 
@@ -413,7 +435,7 @@ struct SessionWorkbenchView: View {
             return defaultModel.displayName
         }
 
-        return "GPT-5.3-Codex"
+        return L10n.text("Server default")
     }
 
     var composerReasoningOptions: [CodexReasoningEffortOption] {
@@ -471,7 +493,8 @@ struct SessionWorkbenchView: View {
     }
 
     var isAwaitingPromptDispatch: Bool {
-        self.pendingPromptDispatchCount > 0
+        guard let composerScope else { return false }
+        return self.appState.composerDraftStore.hasPendingSubmission(in: composerScope)
     }
 
     func isPlanCollaborationMode(_ modeID: String?) -> Bool {
@@ -632,6 +655,57 @@ struct SessionWorkbenchView: View {
         self.glassWhiteTint(light: 0.30, dark: 0.20)
     }
 
+    func saveLoadedComposerDraft() {
+        guard self.isComposerViewVisible, let loadedComposerScope else { return }
+        self.appState.composerDraftStore.save(self.currentComposerDraft, for: loadedComposerScope)
+    }
+
+    func synchronizeComposerDraftScope() {
+        guard self.isComposerViewVisible, self.loadedComposerScope != self.composerScope else { return }
+        let restored = self.appState.composerDraftStore.switchScope(
+            from: self.loadedComposerScope, to: self.composerScope, currentDraft: self.currentComposerDraft
+        )
+        self.loadedComposerScope = self.composerScope
+        self.prompt = restored.text
+        self.selectedComposerTokenBadges = restored.contextTokens
+    }
+
+    func restoreFailedComposerDraft(_ failureID: UUID, in scope: CodexComposerDraftScope) {
+        self.synchronizeComposerDraftScope()
+        guard self.loadedComposerScope == scope, self.composerScope == scope else { return }
+        self.saveLoadedComposerDraft()
+        guard let recovered = self.appState.composerDraftStore.restoreFailure(failureID, in: scope) else { return }
+        self.prompt = recovered.text
+        self.selectedComposerTokenBadges = recovered.contextTokens
+        self.isPromptFieldFocused = true
+        self.showComposerInfo(L10n.text("Saved input added before your draft. Review it before sending."), tone: .status)
+    }
+
+    @ViewBuilder
+    var composerRecoveryNotice: some View {
+        if let scope = self.composerScope,
+           let first = self.appState.composerDraftStore.failedDrafts(in: scope).first {
+            HStack(spacing: 12) {
+                Label(
+                    L10n.format("Saved unsent input: %d", self.appState.composerDraftStore.failedDrafts(in: scope).count),
+                    systemImage: "tray.and.arrow.down"
+                )
+                Spacer(minLength: 4)
+                Button(L10n.text("Add to draft")) {
+                    self.restoreFailedComposerDraft(first.id, in: scope)
+                }
+                .fontWeight(.semibold)
+                .accessibilityHint(L10n.text("Adds the saved input before your current draft without sending it."))
+            }
+            .font(.caption)
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color.black.opacity(0.88), in: RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal, 12)
+        }
+    }
+
     var baseWorkbenchContent: some View {
         ZStack(alignment: .leading) {
             self.chatBackground
@@ -641,7 +715,10 @@ struct SessionWorkbenchView: View {
                 self.chatTimeline
             }
             .overlay(alignment: .bottom) {
-                self.chatComposer
+                VStack(spacing: 0) {
+                    self.composerRecoveryNotice
+                    self.chatComposer
+                }
                     .background {
                         GeometryReader { proxy in
                             Color.clear
@@ -700,14 +777,17 @@ struct SessionWorkbenchView: View {
     func applyingLifecycleHandlers<Content: View>(to content: Content) -> some View {
         content
         .onAppear {
+            self.isComposerViewVisible = true
             self.appState.selectHost(self.host.id)
             self.appState.hostSessionStore.markOpened(hostID: self.host.id)
             self.restoreSelectionFromSession()
+            self.syncOfficialThreadMetadata()
             if self.selectedWorkspaceID == nil,
                let firstWorkspace = self.workspaces.first {
                 self.selectedWorkspaceID = firstWorkspace.id
                 self.appState.hostSessionStore.selectProject(hostID: self.host.id, projectID: firstWorkspace.id)
             }
+            self.synchronizeComposerDraftScope()
             if self.isSSHTransport {
                 self.appState.appServerClient.disconnect()
             }
@@ -716,6 +796,15 @@ struct SessionWorkbenchView: View {
                 self.scheduleSessionRefresh([.threads, .catalogs])
             }
             self.refreshParsedChatMessagesIfNeeded()
+        }
+        .onChange(of: self.composerScope) {
+            self.synchronizeComposerDraftScope()
+        }
+        .onChange(of: self.prompt) {
+            self.saveLoadedComposerDraft()
+        }
+        .onChange(of: self.selectedComposerTokenBadges) {
+            self.saveLoadedComposerDraft()
         }
         .onChange(of: self.selectedWorkspaceID) {
             self.syncComposerControlsWithWorkspace()
@@ -727,6 +816,7 @@ struct SessionWorkbenchView: View {
             self.syncComposerReasoningWithModel()
         }
         .onChange(of: self.selectedThreadID) {
+            self.syncOfficialThreadMetadata()
             self.refreshParsedChatMessagesIfNeeded()
             self.handleSelectedThreadChanged()
         }
@@ -844,6 +934,9 @@ struct SessionWorkbenchView: View {
             self.gitDiffPage
         }
         .onDisappear {
+            self.saveLoadedComposerDraft()
+            self.isComposerViewVisible = false
+            self.loadedComposerScope = nil
             self.refreshCoordinatorTask?.cancel()
             self.refreshCoordinatorTask = nil
             self.pendingRefreshWork.removeAll()
@@ -861,8 +954,8 @@ struct SessionWorkbenchView: View {
 
     var body: some View {
         let content = self.baseWorkbenchContent
-        return self.applyingPresentationHandlers(
-            to: self.applyingLifecycleHandlers(to: content)
+        return self.applyingOfficialControls(
+            to: self.applyingPresentationHandlers(to: self.applyingLifecycleHandlers(to: content))
         )
     }
 

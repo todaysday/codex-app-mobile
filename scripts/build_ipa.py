@@ -24,6 +24,8 @@ DISTRIBUTION = ROOT / ".build/distribution"
 PROJECT_NOTICES = (
     "Attribution/Project/CodexAppMobile-MIT.txt",
     "Attribution/Project/ChatGPT-WebView-MIT.txt",
+    "Attribution/Project/OpenAI-Codex-APACHE-2.0.txt",
+    "Attribution/Project/OpenAI-Codex-NOTICE.txt",
     "Attribution/Project/THIRD_PARTY_LICENSES.md",
 )
 

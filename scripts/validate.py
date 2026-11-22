@@ -153,6 +153,8 @@ def main():
     attribution = ROOT / "CodexAppMobile/Resources/Attribution/Project"
     for source, resource in (("LICENSE", "CodexAppMobile-MIT.txt"),
                              ("docs/licenses/ChatGPT-WebView-MIT.txt", "ChatGPT-WebView-MIT.txt"),
+                             ("docs/licenses/OpenAI-Codex-APACHE-2.0.txt", "OpenAI-Codex-APACHE-2.0.txt"),
+                             ("docs/licenses/OpenAI-Codex-NOTICE.txt", "OpenAI-Codex-NOTICE.txt"),
                              ("THIRD_PARTY_LICENSES.md", "THIRD_PARTY_LICENSES.md")):
         require((attribution / resource).read_bytes() == (ROOT / source).read_bytes(),
                 f"Bundled attribution differs from source: {resource}")
