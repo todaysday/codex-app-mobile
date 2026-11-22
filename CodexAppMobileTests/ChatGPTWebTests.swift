@@ -72,7 +72,8 @@ final class ChatGPTWebTests: XCTestCase {
         let second = model.prepareWebView()
         XCTAssertTrue(first === second)
         XCTAssertNil(first.url, "Creating or reusing the view must not start network navigation.")
-        XCTAssertNil(first.customUserAgent, "Do not impersonate Safari to bypass embedded-browser restrictions.")
+        XCTAssertTrue(first.customUserAgent?.isEmpty ?? true,
+                      "Do not impersonate Safari to bypass embedded-browser restrictions.")
         XCTAssertTrue(first.configuration.websiteDataStore.isPersistent)
         XCTAssertEqual(first.configuration.websiteDataStore.identifier, identifier)
         XCTAssertNotEqual(identifier, WKWebsiteDataStore.default().identifier)
