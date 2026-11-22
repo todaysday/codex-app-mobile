@@ -427,7 +427,7 @@ final class ChatGPTWebProfiles: ObservableObject {
         // its named data store. All other models and stores remain untouched.
         if selectedID == id, let replacement = profiles.first(where: { $0.id != id }) {
             selectedID = replacement.id
-            _ = model(for: replacement.id)
+            _ = self.model(for: replacement.id)
             defaults.set(replacement.id.uuidString, forKey: Self.selectionKey)
         }
         models.removeValue(forKey: id)
