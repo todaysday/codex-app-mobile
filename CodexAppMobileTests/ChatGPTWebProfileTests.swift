@@ -131,6 +131,28 @@ final class ChatGPTWebProfileTests: XCTestCase {
         }
         let target = profiles.profiles[1]
         XCTAssertTrue(profiles.select(target.id))
+        let targetView = try XCTUnwrap(views[target.id])
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let controller = UIViewController()
+        window.rootViewController = controller
+        controller.view.addSubview(targetView)
+        window.makeKeyAndVisible()
+        targetView.frame = controller.view.bounds
+        targetView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        window.layoutIfNeeded()
+        defer {
+            targetView.removeFromSuperview()
+            window.isHidden = true
+            window.rootViewController = nil
+            previousWindow?.makeKeyAndVisible()
+        }
+        // Exercise clearing an existing document. A zero-frame, never-loaded WKWebView
+        // would spend the quiescer's timeout starting WebContent/GPU processes in CI.
+        try await ProfileFixturePageLoader().load(in: targetView)
+        XCTAssertEqual(targetView.title, "Profile clear fixture")
+        XCTAssertTrue(targetView.window === window)
         let didClear = await profiles.selectedModel.clearWebsiteData()
         XCTAssertTrue(didClear)
         XCTAssertEqual(profiles.profiles.count, 3, "Clearing data keeps the profile registration.")
@@ -370,5 +392,64 @@ private final class RefusingProfileNavigationView: WKWebView {
 
     override func loadHTMLString(_ string: String, baseURL: URL?) -> WKNavigation? {
         refusesNavigation ? nil : super.loadHTMLString(string, baseURL: baseURL)
+    }
+}
+
+@MainActor
+private final class ProfileFixturePageLoader: NSObject, WKNavigationDelegate {
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var timeout: Task<Void, Never>?
+    private var navigation: WKNavigation?
+
+    private enum FixtureError: Error { case couldNotStart, timedOut, processTerminated }
+
+    func load(in webView: WKWebView) async throws {
+        let previousDelegate = webView.navigationDelegate
+        webView.navigationDelegate = self
+        defer {
+            timeout?.cancel()
+            webView.navigationDelegate = previousDelegate
+        }
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            self.continuation = continuation
+            timeout = Task { @MainActor [weak self] in
+                do { try await Task.sleep(for: .seconds(20)) } catch { return }
+                self?.finish(FixtureError.timedOut)
+            }
+            navigation = webView.loadHTMLString(
+                "<!doctype html><title>Profile clear fixture</title><p>Local session fixture</p>",
+                baseURL: ChatGPTWebPolicy.homeURL
+            )
+            if navigation == nil { finish(FixtureError.couldNotStart) }
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard let navigation, navigation === self.navigation else { return }
+        finish()
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        guard let navigation, navigation === self.navigation else { return }
+        finish(error)
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        guard let navigation, navigation === self.navigation else { return }
+        finish(error)
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        finish(FixtureError.processTerminated)
+    }
+
+    private func finish(_ error: Error? = nil) {
+        timeout?.cancel()
+        timeout = nil
+        navigation = nil
+        let pending = continuation
+        continuation = nil
+        if let error { pending?.resume(throwing: error) }
+        else { pending?.resume() }
     }
 }
