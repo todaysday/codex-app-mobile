@@ -168,6 +168,49 @@ final class AppServerConnectionTests: XCTestCase {
         XCTAssertEqual(passwords.readPassword(for: host.id), "test-ssh-password")
     }
 
+    @MainActor
+    func testAppServerOnlyHostDoesNotRequireSSHAndKeepsFullEndpoint() throws {
+        let suite = "WSSOnlyHost.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let hosts = RemoteHostStore(defaults: defaults,
+                                    credentialStore: InMemoryHostCredentialStore(),
+                                    appServerCredentialStore: TestAppServerCredentialStore())
+        let draft = RemoteHostDraft(name: "WebSocket only", host: "", sshPort: 0,
+                                    username: "", appServerHost: "", appServerPort: 0,
+                                    preferredTransport: .appServerWS, password: "",
+                                    appServerEndpoint: "wss://proxy.example.test:8443/team/socket")
+        XCTAssertTrue(draft.isValid)
+        XCTAssertTrue(hosts.upsert(hostID: nil, draft: draft))
+        let host = try XCTUnwrap(hosts.hosts.first)
+        XCTAssertFalse(host.hasSSHConfiguration)
+        XCTAssertEqual(host.username, "")
+        XCTAssertEqual(host.appServerURL, "wss://proxy.example.test:8443/team/socket")
+        var edited = RemoteHostDraft(host: host, password: "")
+        XCTAssertTrue(edited.isValid)
+        edited.name = "Updated WebSocket"
+        XCTAssertTrue(hosts.upsert(hostID: host.id, draft: edited))
+        XCTAssertEqual(hosts.hosts.first?.appServerURL, draft.appServerEndpoint)
+    }
+
+    func testSSHStillRequiresCompleteFields() {
+        var draft = RemoteHostDraft(name: "SSH Host", host: "", sshPort: 22,
+                                    username: "", appServerHost: "", appServerPort: 8080,
+                                    preferredTransport: .ssh, password: "",
+                                    appServerEndpoint: "wss://server.example.test")
+        XCTAssertFalse(draft.isValid)
+        draft.host = "server.example.test"
+        XCTAssertFalse(draft.isValid)
+        draft.username = "developer"
+        XCTAssertTrue(draft.isValid)
+        draft.sshPort = 0
+        XCTAssertFalse(draft.isValid)
+        draft.preferredTransport = .appServerWS
+        draft.host = ""
+        draft.username = ""
+        XCTAssertTrue(draft.isValid)
+    }
+
     private static func host() -> RemoteHost {
         RemoteHost(name: "VPS", host: "host.example.test", sshPort: 22, username: "user",
                    appServerURL: "wss://proxy.example.test:8443/team/socket")

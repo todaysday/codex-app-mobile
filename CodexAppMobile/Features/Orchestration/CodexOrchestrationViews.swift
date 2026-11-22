@@ -64,10 +64,12 @@ struct HostsView: View {
                                     Label(L10n.text("Edit"), systemImage: "pencil")
                                 }
 
-                                Button {
-                                    self.launchTerminal(for: host)
-                                } label: {
-                                    Label(L10n.text("Terminal"), systemImage: "terminal")
+                                if host.hasSSHConfiguration {
+                                    Button {
+                                        self.launchTerminal(for: host)
+                                    } label: {
+                                        Label(L10n.text("Terminal"), systemImage: "terminal")
+                                    }
                                 }
 
                                 Button {
@@ -177,9 +179,15 @@ struct HostsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(host.name)
                     .font(.headline)
-                Text("\(host.username)@\(host.host):\(host.sshPort)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                if host.hasSSHConfiguration {
+                    Text("\(host.username)@\(host.host):\(host.sshPort)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("App Server only · no SSH configured")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
                 Text(host.appServerURL)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -209,6 +217,7 @@ struct HostsView: View {
     }
 
     private func launchTerminal(for host: RemoteHost) {
+        guard host.hasSSHConfiguration else { return }
         self.appState.terminalLaunchContext = TerminalLaunchContext(
             hostID: host.id,
             projectPath: nil,
@@ -339,6 +348,7 @@ struct RemoteHostEditorView: View {
     @State private var appServerEndpoint: String
     @State private var serverCredentials: AppServerCredentials
     @State private var preferredTransport: TransportKind
+    @State private var enablesSSHFallback: Bool
     @State private var saveFailed = false
 
     init(
@@ -368,6 +378,7 @@ struct RemoteHostEditorView: View {
         _appServerEndpoint = State(initialValue: initialDraft.appServerEndpoint)
         _serverCredentials = State(initialValue: initialServerCredentials)
         _preferredTransport = State(initialValue: host?.preferredTransport ?? .appServerWS)
+        _enablesSSHFallback = State(initialValue: host?.hasSSHConfiguration ?? false)
     }
 
     private var parsedSSHPort: Int {
@@ -378,16 +389,20 @@ struct RemoteHostEditorView: View {
         Int(self.appServerPortText) ?? 0
     }
 
+    private var sshFieldsEnabled: Bool {
+        preferredTransport == .ssh || enablesSSHFallback
+    }
+
     private var draft: RemoteHostDraft {
         RemoteHostDraft(
             name: self.displayName,
-            host: self.hostAddress,
-            sshPort: self.parsedSSHPort,
-            username: self.username,
+            host: self.sshFieldsEnabled ? self.hostAddress : "",
+            sshPort: self.sshFieldsEnabled ? self.parsedSSHPort : 22,
+            username: self.sshFieldsEnabled ? self.username : "",
             appServerHost: self.appServerHost,
             appServerPort: self.parsedAppServerPort,
             preferredTransport: self.preferredTransport,
-            password: self.password,
+            password: self.sshFieldsEnabled ? self.password : "",
             appServerEndpoint: self.appServerEndpoint,
             appServerCredentials: self.serverCredentials
         )
@@ -398,14 +413,6 @@ struct RemoteHostEditorView: View {
             Form {
                 Section(L10n.text("Basic")) {
                     TextField(L10n.text("Name"), text: self.$displayName)
-                    TextField(L10n.text("Host"), text: self.$hostAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled(true)
-                    TextField(L10n.text("SSH Port"), text: self.$sshPortText)
-                        .keyboardType(.numberPad)
-                    TextField(L10n.text("Username"), text: self.$username)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled(true)
                 }
 
                 Section {
@@ -457,8 +464,25 @@ struct RemoteHostEditorView: View {
                     Text("Tokens are saved in this app's Keychain and sent only to your WSS endpoint. Your Codex account remains on the VPS.")
                 }
 
-                Section(L10n.text("SSH")) {
-                    SecureField(L10n.text("Password (optional)"), text: self.$password)
+                if self.preferredTransport == .appServerWS {
+                    Section {
+                        Toggle("Configure optional SSH fallback", isOn: self.$enablesSSHFallback)
+                    } footer: {
+                        Text("WSS connections do not require an SSH host, username or password.")
+                    }
+                }
+                if self.sshFieldsEnabled {
+                    Section(L10n.text("SSH")) {
+                        TextField("SSH host", text: self.$hostAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled(true)
+                        TextField(L10n.text("SSH Port"), text: self.$sshPortText)
+                            .keyboardType(.numberPad)
+                        TextField(L10n.text("Username"), text: self.$username)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled(true)
+                        SecureField(L10n.text("Password (optional)"), text: self.$password)
+                    }
                 }
             }
             .navigationTitle(self.host == nil ? L10n.text("New Host") : L10n.text("Edit Host"))

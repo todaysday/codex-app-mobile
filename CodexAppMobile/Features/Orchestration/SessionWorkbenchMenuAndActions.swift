@@ -241,6 +241,7 @@ extension SessionWorkbenchView {
                 }
 
                 VStack(spacing: 8) {
+                    if self.host.hasSSHConfiguration {
                     Button {
                         self.isMenuOpen = false
                         self.openInTerminal()
@@ -254,6 +255,7 @@ extension SessionWorkbenchView {
                             }
                     }
                     .buttonStyle(.plain)
+                    }
 
                     Button {
                         self.isMenuOpen = false

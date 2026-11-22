@@ -120,6 +120,13 @@ struct RemoteHost: Identifiable, Codable, Equatable {
         self.updatedAt = updatedAt
     }
 
+    /// An App Server-only record is valid without an SSH account.
+    var hasSSHConfiguration: Bool {
+        !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (1...65535).contains(sshPort)
+    }
+
     static func defaultAppServerURL(host: String, port: Int = 8080) -> String {
         let normalizedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         return "ws://\(normalizedHost):\(port)"
@@ -199,7 +206,7 @@ struct RemoteHostDraft {
         username: "",
         appServerHost: "",
         appServerPort: 8080,
-        preferredTransport: .ssh,
+        preferredTransport: .appServerWS,
         password: ""
     )
 
@@ -208,12 +215,13 @@ struct RemoteHostDraft {
         let trimmedHost = self.host.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedUser = self.username.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        guard !trimmedName.isEmpty,
-              !trimmedHost.isEmpty,
-              !trimmedUser.isEmpty,
-              (1...65535).contains(self.sshPort)
-        else {
-            return false
+        guard !trimmedName.isEmpty else { return false }
+        // SSH is optional when the WebSocket App Server is the chosen transport.
+        // If partly configured, reject rather than silently store broken SSH credentials.
+        let wantsSSH = preferredTransport == .ssh || !trimmedHost.isEmpty || !trimmedUser.isEmpty
+        if wantsSSH {
+            guard !trimmedHost.isEmpty, !trimmedUser.isEmpty,
+                  (1...65535).contains(sshPort) else { return false }
         }
 
         if self.appServerEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

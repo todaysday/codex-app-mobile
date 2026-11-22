@@ -1391,6 +1391,7 @@ extension SessionWorkbenchView {
     }
 
     func openInTerminal() {
+        guard host.hasSSHConfiguration else { return }
         let initialCommand: String
         if let selectedWorkspace,
            let selectedThreadID,
