@@ -1,23 +1,29 @@
 # Design
 
-## Stable ownership and migration
+## Registry and migration
 
-A main-actor `ChatGPTWebProfiles` owner retains two `ChatGPTWebViewModel` instances. Each model continues to own its own lazy WKWebView, website store, history, popup, download, and reset lifecycle. Account 1 retains `70E5ABF8-5C6B-4E75-A7F1-FF38825C26D3`; Account 2 receives a second fixed identifier. Profile selection is non-secret local metadata persisted separately from Codex preferences.
+A main-actor `ChatGPTWebProfiles` owner persists a registry containing profile UUIDs, user-facing names, and the selected UUID in one local preferences document. Each UUID is also its stable WebKit data-store identifier. The initial profile retains `70E5ABF8-5C6B-4E75-A7F1-FF38825C26D3`; new profiles receive fresh UUIDs. No fixed maximum or hard-coded second slot is introduced.
 
-The account labels identify local browser slots. They do not claim to know an email address, account identity, subscription, or successful login. The application does not inspect authentication cookies to infer account status.
+Each profile's `ChatGPTWebViewModel` is created only when needed and remains owned by the registry for the process lifetime. That model retains its own lazy WKWebView, website store, history, popup, download, and reset lifecycle. Creating or selecting a profile in settings does not navigate its browser.
 
-## Selection and presentation
+Names describe local browser profiles, not account identities inferred from website credentials. Names must be nonempty after trimming, bounded to 60 characters, free of control characters, and distinct ignoring case. The application does not inspect authentication cookies to infer an email address, login status, or subscription.
 
-The ChatGPT destination presents a two-option profile selector and the chosen model's browser. Changing the selection remounts only the SwiftUI bridge; the owner retains both WKWebViews and their navigation history. Opening an unused profile starts that profile's normal ChatGPT navigation. Selecting a profile in settings does not create or navigate its WKWebView.
+## Selection and management
 
-Switching is blocked while the current profile is clearing data, presenting an authentication popup or system sheet, handling a JavaScript dialog, or completing/sharing a download. The user can finish or dismiss that interaction before selecting another profile. Switching the application's main tabs remains available.
+The ChatGPT destination provides a profile menu. Settings exposes the complete profile list, an explicit Add Web Account action with a name field, rename actions, and individually confirmed deletion. Adding a profile selects it for its next visit. The selected UUID is restored across launches; missing or invalid selection metadata falls back to the first available profile without erasing any store.
 
-## Scoped reset
+Switching retains each WKWebView and its navigation history. Switching or adding is blocked while the current profile is clearing data, presenting a profile-owned popup or system sheet, handling a JavaScript dialog, or completing/sharing a download. Main application tabs remain available.
 
-Clear prompts name the affected account. The action captures the profile/model before awaiting WebKit. Its existing quiescing routine stops that profile's documents before clearing only its named store. The other model, website store, browser instance, and navigation state remain intact. No combined clear-both action is introduced.
+## Independent clear and delete
+
+Clear prompts name the affected profile and retain its registry entry. The action captures the profile/model before awaiting WebKit. Its existing quiescing routine stops that profile's documents before clearing only its named store and temporary downloads.
+
+Deleting a profile first clears that profile successfully, then removes its metadata and retained model. Registry mutations and profile switching are serialized while deletion is in flight. If clearing fails, the profile stays registered and an actionable error is shown. Deleting the selected profile chooses an existing remaining profile; deleting an inactive profile keeps the current selection. At least one profile remains available, and its data can still be cleared. Empty WebKit store containers need not be removed by a separate API; all website data is removed before the registry entry is deleted.
+
+No combined clear-all operation is introduced. Other profiles, Codex credentials, Safari, and the official ChatGPT app retain their own data.
 
 ## Verification boundaries
 
-Tests create persistent named stores with random identifiers and set distinct session-fixture cookies with the same origin, name, and path. They switch through the real profile owner, reconstruct that owner with the same stores, and clear each profile independently. A mounted SwiftUI tab test verifies the actual web-view instance selected on screen and preserved Codex state.
+Tests create three or more persistent named stores with random identifiers and set distinct session-fixture cookies sharing the same origin, name, and path. They switch through the real profile owner, reconstruct its persisted registry, clear individual profiles, delete active and inactive profiles, and verify surviving sessions and retained browser instances. A mounted SwiftUI tab test verifies which actual WKWebView is displayed while Codex state stays unchanged.
 
-These tests exercise the application's storage and switching behavior, not ChatGPT's authentication service. The release checklist still requires actual successful sign-in to two intended accounts, switching between their website-visible identities, relaunch, and one-profile clearing on the target iPhone. Provider restrictions, revoked sessions, and account entitlements remain website behavior.
+These tests exercise application storage and switching, not ChatGPT's authentication service. The release checklist still requires real sign-in to the intended accounts, website-visible account identity during switching, relaunch, and independent clearing/deletion on the target iPhone. Provider restrictions, revoked sessions, and entitlements remain website behavior.
