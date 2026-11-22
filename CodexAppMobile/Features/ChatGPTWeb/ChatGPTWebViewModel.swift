@@ -12,13 +12,14 @@ final class ChatGPTWebViewModel: NSObject, ObservableObject {
     @Published private(set) var canGoForward = false
     @Published private(set) var currentHost = "chatgpt.com"
     @Published private(set) var isClearing = false
+    @Published private(set) var isRetired = false
     @Published var failure: ChatGPTWebFailure?
     @Published private(set) var sheet: ChatGPTWebSheet?
     @Published private(set) var readyDownload: ChatGPTDownloadedFile?
     @Published private(set) var isDownloading = false
 
     let dataStore: WKWebsiteDataStore
-    var activeDialog: UIAlertController?
+    @Published var activeDialog: UIAlertController?
     var cancelDialog: (@MainActor () -> Void)?
     var download: WKDownload?
     var downloadDestination: URL?
@@ -26,9 +27,9 @@ final class ChatGPTWebViewModel: NSObject, ObservableObject {
     private var observations: [NSKeyValueObservation] = []
     private var didStart = false
     private let initialURL: URL
-    private var closingPopup: WKWebView?
+    @Published private var closingPopup: WKWebView?
     private var popupClosingTask: Task<Bool, Never>?
-    private var awaitsSheetDismissal = false
+    @Published private var awaitsSheetDismissal = false
 
     init(storeIdentifier: UUID = ChatGPTWebPolicy.storeIdentifier, initialURL: URL = ChatGPTWebPolicy.homeURL) {
         dataStore = WKWebsiteDataStore(forIdentifier: storeIdentifier)
@@ -36,9 +37,15 @@ final class ChatGPTWebViewModel: NSObject, ObservableObject {
         super.init()
     }
 
+    var canSwitchProfile: Bool {
+        !isRetired && !isClearing && !isDownloading && readyDownload == nil && sheet == nil
+            && !awaitsSheetDismissal && activeDialog == nil && closingPopup == nil
+    }
+
     /// Creates the view without making a network request; useful for lifecycle tests too.
     @discardableResult
-    func prepareWebView() -> WKWebView {
+    func prepareWebView() -> WKWebView? {
+        guard !isRetired, !isClearing else { return nil }
         if let webView { return webView }
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = dataStore
@@ -56,13 +63,13 @@ final class ChatGPTWebViewModel: NSObject, ObservableObject {
     }
 
     func loadIfNeeded() {
-        guard !isClearing, !didStart else { return }
+        guard !isRetired, !isClearing, !didStart else { return }
         didStart = true
-        prepareWebView().load(URLRequest(url: initialURL))
+        prepareWebView()?.load(URLRequest(url: initialURL))
     }
 
     func reload() {
-        guard !isClearing else { return }
+        guard !isRetired, !isClearing else { return }
         failure = nil
         if let webView, didStart, let url = webView.url, url.absoluteString != "about:blank" {
             webView.reload()
@@ -72,25 +79,25 @@ final class ChatGPTWebViewModel: NSObject, ObservableObject {
     }
 
     func goHome() {
-        guard !isClearing else { return }
+        guard !isRetired, !isClearing else { return }
         failure = nil
         didStart = true
-        prepareWebView().load(URLRequest(url: initialURL))
+        prepareWebView()?.load(URLRequest(url: initialURL))
     }
 
-    func goBack() { if !isClearing { webView?.goBack() } }
-    func goForward() { if !isClearing { webView?.goForward() } }
+    func goBack() { if !isRetired && !isClearing { webView?.goBack() } }
+    func goForward() { if !isRetired && !isClearing { webView?.goForward() } }
 
     func openBrowser() {
         presentBrowser(url: ChatGPTWebPolicy.homeURL)
     }
 
     func presentBrowser(url: URL) {
-        guard !isClearing, !awaitsSheetDismissal, sheet == nil, ChatGPTWebPolicy.isSecureURL(url) else { return }
+        guard !isRetired, !isClearing, !awaitsSheetDismissal, sheet == nil, ChatGPTWebPolicy.isSecureURL(url) else { return }
         sheet = .browser(url)
     }
 
-    var canPresentPopup: Bool { !isClearing && !awaitsSheetDismissal && sheet == nil && closingPopup == nil }
+    var canPresentPopup: Bool { !isRetired && !isClearing && !awaitsSheetDismissal && sheet == nil && closingPopup == nil }
 
     func presentPopup(_ view: WKWebView) {
         guard canPresentPopup else { return }
@@ -98,6 +105,7 @@ final class ChatGPTWebViewModel: NSObject, ObservableObject {
     }
 
     func owns(_ view: WKWebView) -> Bool {
+        guard !isRetired else { return false }
         if webView === view { return true }
         if case .popup(let popup)? = sheet { return popup.webView === view }
         return false
@@ -135,7 +143,7 @@ final class ChatGPTWebViewModel: NSObject, ObservableObject {
     }
 
     func presentReadyDownload() {
-        guard !isClearing, !awaitsSheetDismissal, sheet == nil, let readyDownload else { return }
+        guard !isRetired, !isClearing, !awaitsSheetDismissal, sheet == nil, let readyDownload else { return }
         sheet = .download(readyDownload)
     }
 
@@ -148,8 +156,12 @@ final class ChatGPTWebViewModel: NSObject, ObservableObject {
     }
 
     /// The caller presents confirmation first. Repeated calls during a reset are ignored.
-    func clearWebsiteData() async {
-        guard !isClearing else { return }
+    @discardableResult
+    func clearWebsiteData(retiringProfile: Bool = false) async -> Bool {
+        guard !isRetired, !isClearing else { return false }
+        // A removed screen can schedule a late load when isClearing changes. Retire
+        // before the first await so it can never recreate a deleted profile's page.
+        isRetired = retiringProfile
         isClearing = true
         failure = nil
         dismissJavaScriptDialog()
@@ -178,8 +190,9 @@ final class ChatGPTWebViewModel: NSObject, ObservableObject {
             popupClosingTask = nil
             failure = .init(message: "The web page could not be stopped. Reload it and try clearing again.", code: "clear-timeout")
             didStart = true
+            isRetired = false
             isClearing = false
-            return
+            return false
         }
         observations.removeAll()
         webView = nil
@@ -192,6 +205,7 @@ final class ChatGPTWebViewModel: NSObject, ObservableObject {
         refreshNavigationState()
         isClearing = false
         // Remain unloaded after reset; the screen loads a fresh page when visible.
+        return true
     }
 
     func refreshNavigationState() {
@@ -228,7 +242,7 @@ final class ChatGPTWebViewModel: NSObject, ObservableObject {
     }
 
     func downloadStarted(_ newDownload: WKDownload) {
-        guard !isClearing, download == nil, readyDownload == nil else {
+        guard !isRetired, !isClearing, download == nil, readyDownload == nil else {
             newDownload.cancel { _ in }
             failure = .init(message: "Finish or dismiss the current download before starting another.", code: "download-busy")
             return
@@ -239,6 +253,7 @@ final class ChatGPTWebViewModel: NSObject, ObservableObject {
     }
 
     func downloadFinished() {
+        guard !isRetired else { return }
         if let url = downloadDestination, let directory = downloadDirectory {
             readyDownload = ChatGPTDownloadedFile(url: url, directory: directory)
         }

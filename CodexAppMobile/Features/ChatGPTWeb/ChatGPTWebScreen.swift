@@ -2,8 +2,49 @@ import SafariServices
 import SwiftUI
 import WebKit
 
+struct ChatGPTWebProfilesScreen: View {
+    @ObservedObject var profiles: ChatGPTWebProfiles
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ChatGPTWebProfilePicker(profiles: profiles, model: profiles.selectedModel)
+            ChatGPTWebScreen(model: profiles.selectedModel, profile: profiles.selectedProfile)
+                .id(profiles.selectedProfileID)
+        }
+    }
+}
+
+struct ChatGPTWebProfilePicker: View {
+    @ObservedObject var profiles: ChatGPTWebProfiles
+    @ObservedObject var model: ChatGPTWebViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Picker("Web Account", selection: Binding(get: { profiles.selectedProfileID }, set: { profiles.select($0) })) {
+                ForEach(profiles.profiles) { profile in
+                    Text(profile.name).tag(profile.id)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .disabled(!model.canSwitchProfile || profiles.isDeleting)
+            .accessibilityIdentifier("chatgpt-profile-picker")
+            if !model.canSwitchProfile || profiles.isDeleting {
+                Text(profiles.isDeleting ? "Removing a profile’s website data…" : "Finish or dismiss this account’s browser interaction before switching accounts.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            NavigationLink("Manage Web Accounts") {
+                ChatGPTWebProfilesSettingsView(profiles: profiles)
+            }
+            .font(.caption)
+        }
+        .padding(.horizontal).padding(.vertical, 8)
+    }
+}
+
 struct ChatGPTWebScreen: View {
     @ObservedObject var model: ChatGPTWebViewModel
+    let profile: ChatGPTWebProfile
     @State private var confirmsClear = false
     @State private var showsSignInHelp = false
 
@@ -56,17 +97,20 @@ struct ChatGPTWebScreen: View {
                         Button("Share Download", systemImage: "square.and.arrow.up", action: model.presentReadyDownload)
                     }
                     Divider()
-                    Button("Clear ChatGPT Web Data", systemImage: "trash", role: .destructive) { confirmsClear = true }
+                    Button("Clear \(profile.name) Web Data", systemImage: "trash", role: .destructive) { confirmsClear = true }
                 } label: { Image(systemName: "ellipsis.circle") }
                 .accessibilityLabel("ChatGPT options").disabled(model.isClearing)
             }
         }
         .task(id: model.isClearing) { model.loadIfNeeded() }
-        .confirmationDialog("Clear ChatGPT web data?", isPresented: $confirmsClear, titleVisibility: .visible) {
-            Button("Clear Web Data", role: .destructive) { Task { await model.clearWebsiteData() } }
+        .confirmationDialog("Clear \(profile.name) web data?", isPresented: $confirmsClear, titleVisibility: .visible) {
+            Button("Clear Web Data", role: .destructive) {
+                let confirmedModel = model
+                Task { await confirmedModel.clearWebsiteData() }
+            }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This signs out the embedded ChatGPT browser and removes its cookies, website data and temporary downloads. Codex, Safari and the official ChatGPT app keep their own accounts.")
+            Text("This signs out only \(profile.name) and removes its cookies, website data and temporary downloads. Other web profiles, Codex, Safari and the official ChatGPT app keep their own data.")
         }
         .alert("Signing in to ChatGPT", isPresented: $showsSignInHelp) {
             Button("Open in Browser", action: model.openBrowser)

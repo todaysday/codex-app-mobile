@@ -553,6 +553,10 @@ extension SessionWorkbenchView {
     }
 
     func handleGitMenuAction(_ action: GitMenuAction) {
+        guard self.host.hasSSHConfiguration else {
+            self.presentCriticalErrorDialog(RemoteHostConfigurationError.missingSSH.localizedDescription)
+            return
+        }
         self.isPromptFieldFocused = false
         self.dismissCommandPalette()
         self.dismissStatusPanel()
@@ -600,6 +604,10 @@ extension SessionWorkbenchView {
     }
 
     func reloadGitDiffPage() {
+        guard self.host.hasSSHConfiguration else {
+            self.gitDiffLoadState = .failed(RemoteHostConfigurationError.missingSSH.localizedDescription)
+            return
+        }
         guard let selectedWorkspace else {
             self.presentCriticalErrorDialog("Select a project first.")
             return
@@ -680,6 +688,10 @@ extension SessionWorkbenchView {
     }
 
     func executeGitModalAction() {
+        guard self.host.hasSSHConfiguration else {
+            self.gitOperationErrorMessage = RemoteHostConfigurationError.missingSSH.localizedDescription
+            return
+        }
         guard !self.isRunningGitAction else { return }
         guard let selectedWorkspace else {
             self.presentCriticalErrorDialog("Select a project first.")
@@ -1391,6 +1403,10 @@ extension SessionWorkbenchView {
     }
 
     func openInTerminal() {
+        guard self.host.hasSSHConfiguration else {
+            self.presentCriticalErrorDialog(RemoteHostConfigurationError.missingSSH.localizedDescription)
+            return
+        }
         let initialCommand: String
         if let selectedWorkspace,
            let selectedThreadID,

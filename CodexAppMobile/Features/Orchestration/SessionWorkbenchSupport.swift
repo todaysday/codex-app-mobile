@@ -83,7 +83,8 @@ actor SSHCodexExecService {
         command: String,
         timeoutSeconds: Int
     ) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
+        try host.requireSSHConfiguration()
+        return try await withCheckedThrowingContinuation { continuation in
             let queue = DispatchQueue(label: "com.example.CodexAppMobile.ssh-codex-exec")
             queue.async {
                 final class SharedState: @unchecked Sendable {
@@ -903,7 +904,8 @@ actor SSHGitService {
         command: String,
         timeoutSeconds: Int
     ) async throws -> SSHGitCommandResult {
-        try await withCheckedThrowingContinuation { continuation in
+        try host.requireSSHConfiguration()
+        return try await withCheckedThrowingContinuation { continuation in
             let queue = DispatchQueue(label: "com.example.CodexAppMobile.ssh-git")
             queue.async {
                 final class SharedState: @unchecked Sendable {

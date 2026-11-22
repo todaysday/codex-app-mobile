@@ -20,16 +20,16 @@ The user authorized both specifications and implementation on 2026-11-22. The in
 
 1. Codex retains its upstream host, project, thread, model, approval, terminal, and notification behavior.
 2. App-level ownership keeps the Codex state and ChatGPT browser alive across tab changes.
-3. ChatGPT uses a dedicated persistent `WKWebsiteDataStore(forIdentifier:)` with a stable identifier. This is the iOS 17+ isolation refinement explicitly allowed by the handoff; it replaces the shared default store recommendation.
+3. Each named ChatGPT profile uses its own persistent `WKWebsiteDataStore(forIdentifier:)` with a stable identifier. Settings explicitly adds, renames, switches, and removes profiles; the original profile identifier survives migration. Profile count is not fixed at two.
 4. Codex connection secrets belong in Keychain. Website data belongs in the dedicated WebKit store. Neither module reads or copies the other's credentials.
 5. Release connections use a protected transport to the existing App Server. ChatGPT navigates to the official HTTPS site without injected authentication code or a spoofed user agent.
 6. A successful build does not establish real-device OAuth, account isolation, SideStore installation, or signature refresh success.
 
 ## Specifications and status
 
-The active change is [add-chatgpt-web-companion](changes/add-chatgpt-web-companion/proposal.md). Its capability deltas describe the behavior being added. Tasks distinguish source implementation, automated checks, CI evidence, and physical acceptance.
+The original change is [add-chatgpt-web-companion](changes/add-chatgpt-web-companion/proposal.md). Subsequent deltas cover [official controls](changes/add-official-codex-controls/proposal.md), [scoped drafts](changes/fix-thread-scoped-composer/proposal.md), [named web profiles](changes/add-independent-chatgpt-profiles/proposal.md), [rich child messages](changes/add-rich-subagent-messages/proposal.md), [App Server-only hosts](changes/allow-app-server-only-hosts/proposal.md), and [files/worktrees](changes/add-workspace-files-and-worktrees/proposal.md). Tasks distinguish source implementation, automated checks, CI evidence, and physical acceptance.
 
-The preserved upstream behavior is the starting baseline. No active change is marked fully accepted until its outstanding live gates pass. Goal Mode, subagent navigation, and later workbench enhancements remain [proposed follow-up work](../docs/ROADMAP.md).
+The preserved upstream behavior is the starting baseline. Goals, subagent navigation, and the listed workbench features have native implementations. No active change is marked fully accepted until its outstanding live gates pass; remaining scope is recorded in the [roadmap](../docs/ROADMAP.md).
 
 ## Development conventions
 

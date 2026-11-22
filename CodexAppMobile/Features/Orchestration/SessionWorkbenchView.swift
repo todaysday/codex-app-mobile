@@ -83,6 +83,13 @@ struct SessionWorkbenchView: View {
         var id: String { "\(kind.rawValue):\(threadID)" }
     }
 
+    struct WorkspacePanel: Identifiable {
+        enum Kind: String { case files, worktrees }
+        let kind: Kind
+        let workspace: ProjectWorkspace
+        var id: String { "\(kind.rawValue):\(workspace.id)" }
+    }
+
     enum GitDiffLoadState: Equatable {
         case idle
         case loading
@@ -110,6 +117,7 @@ struct SessionWorkbenchView: View {
     @State var workspacePendingDeletion: ProjectWorkspace?
     @State var activePendingRequest: AppServerPendingRequest?
     @State var officialThreadPanel: OfficialThreadPanel?
+    @State var workspacePanel: WorkspacePanel?
     @State var selectedThreadDirectInputAllowed = true
     @State var confirmedThreadName: String?
     @State var sshTranscriptByThread: [String: String] = [:]

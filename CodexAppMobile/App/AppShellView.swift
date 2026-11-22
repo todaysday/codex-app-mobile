@@ -18,7 +18,7 @@ final class AppNavigationState: ObservableObject {
 
 struct AppShellView: View {
     @EnvironmentObject private var navigation: AppNavigationState
-    @ObservedObject var chatGPT: ChatGPTWebViewModel
+    @ObservedObject var chatGPT: ChatGPTWebProfiles
 
     var body: some View {
         TabView(selection: $navigation.selectedTab) {
@@ -28,7 +28,7 @@ struct AppShellView: View {
                 .tag(AppTab.codex)
 
             NavigationStack {
-                ChatGPTWebScreen(model: chatGPT)
+                ChatGPTWebProfilesScreen(profiles: chatGPT)
             }
             .tabItem { Label("ChatGPT", systemImage: "bubble.left.and.bubble.right") }
             .tag(AppTab.chatGPT)

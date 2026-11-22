@@ -98,7 +98,7 @@ The app SHALL require explicit confirmation for removal and revalidate the workt
 
 #### Scenario: Dirty worktree
 
-- **WHEN** tracked or untracked changes are present at the removal preflight
+- **WHEN** tracked changes, untracked files or ignored local files are present at the removal preflight
 - **THEN** removal is refused and those changes remain on the host.
 
 #### Scenario: Clean linked worktree

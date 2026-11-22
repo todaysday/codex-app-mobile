@@ -18,6 +18,22 @@ extension SessionWorkbenchView {
                                                        title: self.selectedThreadTitle, modelID: self.composerModelForRequest)
     }
 
+    func presentWorkspacePanel(_ kind: WorkspacePanel.Kind) {
+        guard !self.isSSHTransport, let workspace = self.selectedWorkspace else { return }
+        self.isPromptFieldFocused = false
+        self.isMenuOpen = false
+        self.workspacePanel = WorkspacePanel(kind: kind, workspace: workspace)
+    }
+
+    func openWorktree(_ path: String, inheriting workspace: ProjectWorkspace) {
+        guard workspace.hostID == self.host.id,
+              self.appState.appServerClient.isConnected(to: self.host.id),
+              path.hasPrefix("/"), !path.contains("\0") else { return }
+        let worktreeWorkspace = self.appState.projectStore.registerWorktree(path: path, inheriting: workspace)
+        self.workspacePanel = nil
+        self.selectWorkspace(worktreeWorkspace)
+    }
+
     func applyingOfficialControls<Content: View>(to content: Content) -> some View {
         content
             .onReceive(self.appState.appServerClient.$threadRecordsByID) { records in
@@ -40,6 +56,18 @@ extension SessionWorkbenchView {
                     }
                 case .subagents:
                     CodexSubagentsView(client: self.appState.appServerClient, rootThreadID: panel.threadID, rootTitle: panel.title)
+                }
+            }
+            .sheet(item: self.$workspacePanel) { panel in
+                switch panel.kind {
+                case .files:
+                    CodexWorkspaceFilesView(client: self.appState.appServerClient, hostID: self.host.id,
+                                            workspace: panel.workspace)
+                case .worktrees:
+                    CodexWorktreesView(client: self.appState.appServerClient, hostID: self.host.id,
+                                       workspace: panel.workspace) { path in
+                        self.openWorktree(path, inheriting: panel.workspace)
+                    }
                 }
             }
     }
@@ -118,6 +146,18 @@ extension SessionWorkbenchView {
                                 }
 
                                 if let selectedWorkspace {
+                                    if !self.isSSHTransport {
+                                        Button {
+                                            self.presentWorkspacePanel(.files)
+                                        } label: {
+                                            Label("Files", systemImage: "doc.on.doc")
+                                        }
+                                        Button {
+                                            self.presentWorkspacePanel(.worktrees)
+                                        } label: {
+                                            Label("Worktrees", systemImage: "arrow.triangle.branch")
+                                        }
+                                    }
                                     Button(role: .destructive) {
                                         self.workspacePendingDeletion = selectedWorkspace
                                         self.isMenuOpen = false
@@ -254,6 +294,13 @@ extension SessionWorkbenchView {
                             }
                     }
                     .buttonStyle(.plain)
+                    .disabled(!self.host.hasSSHConfiguration)
+
+                    if !self.host.hasSSHConfiguration {
+                        Text("Add SSH settings to use Terminal.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
 
                     Button {
                         self.isMenuOpen = false

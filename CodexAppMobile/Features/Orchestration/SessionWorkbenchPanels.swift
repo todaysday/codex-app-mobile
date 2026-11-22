@@ -129,6 +129,18 @@ extension SessionWorkbenchView {
                     } label: {
                         Label(action.title, systemImage: action.systemImage)
                     }
+                    .disabled(!self.host.hasSSHConfiguration)
+                }
+                if !self.isSSHTransport {
+                    Divider()
+                    Button {
+                        self.presentWorkspacePanel(.worktrees)
+                    } label: {
+                        Label("Worktrees", systemImage: "arrow.triangle.branch")
+                    }
+                }
+                if !self.host.hasSSHConfiguration {
+                    Text("Commit, push, and Git diff require SSH settings.")
                 }
             } label: {
                 self.composerGitIconChip(minWidth: 48)

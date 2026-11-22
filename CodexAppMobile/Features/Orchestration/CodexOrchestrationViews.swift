@@ -69,6 +69,7 @@ struct HostsView: View {
                                 } label: {
                                     Label(L10n.text("Terminal"), systemImage: "terminal")
                                 }
+                                .disabled(!host.hasSSHConfiguration)
 
                                 Button {
                                     self.disconnectSession(for: host)
@@ -177,9 +178,11 @@ struct HostsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(host.name)
                     .font(.headline)
-                Text("\(host.username)@\(host.host):\(host.sshPort)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                if host.hasSSHConfiguration {
+                    Text("\(host.username)@\(host.host):\(host.sshPort)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
                 Text(host.appServerURL)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -209,6 +212,7 @@ struct HostsView: View {
     }
 
     private func launchTerminal(for host: RemoteHost) {
+        guard host.hasSSHConfiguration else { return }
         self.appState.terminalLaunchContext = TerminalLaunchContext(
             hostID: host.id,
             projectPath: nil,
@@ -339,6 +343,7 @@ struct RemoteHostEditorView: View {
     @State private var appServerEndpoint: String
     @State private var serverCredentials: AppServerCredentials
     @State private var preferredTransport: TransportKind
+    @State private var sshFallbackEnabled: Bool
     @State private var saveFailed = false
 
     init(
@@ -368,6 +373,7 @@ struct RemoteHostEditorView: View {
         _appServerEndpoint = State(initialValue: initialDraft.appServerEndpoint)
         _serverCredentials = State(initialValue: initialServerCredentials)
         _preferredTransport = State(initialValue: host?.preferredTransport ?? .appServerWS)
+        _sshFallbackEnabled = State(initialValue: host?.hasSSHConfiguration ?? false)
     }
 
     private var parsedSSHPort: Int {
@@ -389,7 +395,8 @@ struct RemoteHostEditorView: View {
             preferredTransport: self.preferredTransport,
             password: self.password,
             appServerEndpoint: self.appServerEndpoint,
-            appServerCredentials: self.serverCredentials
+            appServerCredentials: self.serverCredentials,
+            sshFallbackEnabled: self.sshFallbackEnabled
         )
     }
 
@@ -398,14 +405,11 @@ struct RemoteHostEditorView: View {
             Form {
                 Section(L10n.text("Basic")) {
                     TextField(L10n.text("Name"), text: self.$displayName)
-                    TextField(L10n.text("Host"), text: self.$hostAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled(true)
-                    TextField(L10n.text("SSH Port"), text: self.$sshPortText)
-                        .keyboardType(.numberPad)
-                    TextField(L10n.text("Username"), text: self.$username)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled(true)
+                    Picker("Preferred connection", selection: self.$preferredTransport) {
+                        ForEach(TransportKind.allCases) { kind in
+                            Text(kind.displayName).tag(kind)
+                        }
+                    }
                 }
 
                 Section {
@@ -415,16 +419,11 @@ struct RemoteHostEditorView: View {
                         .autocorrectionDisabled(true)
                         .accessibilityLabel("App Server WebSocket URL")
                     if self.appServerEndpoint.isEmpty {
-                        TextField(L10n.text("Host (default: Basic Host)"), text: self.$appServerHost)
+                        TextField("App Server host (or SSH host)", text: self.$appServerHost)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled(true)
                         TextField(L10n.text("Port"), text: self.$appServerPortText)
                             .keyboardType(.numberPad)
-                    }
-                    Picker("Preferred connection", selection: self.$preferredTransport) {
-                        ForEach(TransportKind.allCases) { kind in
-                            Text(kind.displayName).tag(kind)
-                        }
                     }
                 } header: {
                     Text(L10n.text("App Server"))
@@ -457,8 +456,25 @@ struct RemoteHostEditorView: View {
                     Text("Tokens are saved in this app's Keychain and sent only to your WSS endpoint. Your Codex account remains on the VPS.")
                 }
 
-                Section(L10n.text("SSH")) {
-                    SecureField(L10n.text("Password (optional)"), text: self.$password)
+                Section {
+                    if self.preferredTransport == .appServerWS {
+                        Toggle("Add SSH fallback", isOn: self.$sshFallbackEnabled)
+                    }
+                    if self.preferredTransport == .ssh || self.sshFallbackEnabled {
+                        TextField("SSH host", text: self.$hostAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled(true)
+                        TextField(L10n.text("SSH Port"), text: self.$sshPortText)
+                            .keyboardType(.numberPad)
+                        TextField(L10n.text("Username"), text: self.$username)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled(true)
+                        SecureField(L10n.text("Password (optional)"), text: self.$password)
+                    }
+                } header: {
+                    Text(L10n.text("SSH"))
+                } footer: {
+                    Text("SSH is optional for App Server connections. Add it to use the SSH terminal and SSH Git actions. Files and worktrees use your App Server connection.")
                 }
             }
             .navigationTitle(self.host == nil ? L10n.text("New Host") : L10n.text("Edit Host"))
@@ -516,7 +532,8 @@ private enum RemotePathBrowserError: LocalizedError {
 
 private actor RemotePathBrowserService {
     func listDirectories(host: RemoteHost, password: String, path: String) async throws -> (String, [RemoteDirectoryEntry]) {
-        try await withCheckedThrowingContinuation { continuation in
+        try host.requireSSHConfiguration()
+        return try await withCheckedThrowingContinuation { continuation in
             let queue = DispatchQueue(label: "com.example.CodexAppMobile.path-browser")
             queue.async {
                 final class SharedState: @unchecked Sendable {
@@ -812,6 +829,10 @@ struct RemotePathBrowserView: View {
     }
 
     private func load(path: String) {
+        guard self.host.hasSSHConfiguration else {
+            self.errorMessage = RemoteHostConfigurationError.missingSSH.localizedDescription
+            return
+        }
         let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
         let fallbackPath = self.currentPath.isEmpty ? self.initialPath : self.currentPath
         let targetPath = trimmedPath.isEmpty ? fallbackPath : trimmedPath

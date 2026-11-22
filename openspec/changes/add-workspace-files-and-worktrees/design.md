@@ -31,7 +31,7 @@ List with `git -C <workspace> worktree list --porcelain -z`; parse NUL-separated
 
 Create validates the branch using `git check-ref-format --branch`, then runs `git -C <workspace> worktree add -b <branch> -- <absolute-destination> HEAD`. The destination and branch remain separate argv entries. Show a create form with the exact destination and new branch; successful creation refreshes the list. A subsequent explicit Open action adds or selects the worktree in the host's local workspace store and starts no turn.
 
-Removal requires confirmation identifying the worktree and re-reads the list immediately before mutation. Refuse main, current, bare, locked or prunable worktrees. Run `git -C <target> status --porcelain=v1 -z --untracked-files=all` and refuse any tracked or untracked changes. Then invoke `git -C <workspace> worktree remove -- <path>` without `--force`. Git's own refusal handles races and submodule restrictions. Do not delete the branch or silently delete local workspace records. After ambiguous connection failure, instruct refresh instead of replaying a mutation.
+Removal requires confirmation identifying the worktree and re-reads the list immediately before mutation. Refuse main, current, bare, locked, prunable or unfamiliar worktree metadata. Run `git -C <target> status --porcelain=v1 -z --untracked-files=all --ignored=matching` and refuse tracked, untracked or ignored local files, including ignored secrets. Then invoke `git -C <workspace> worktree remove -- <path>` without `--force`. Git's own refusal handles races and submodule restrictions. Do not delete the branch or silently delete local workspace records. After ambiguous connection failure, instruct refresh instead of replaying a mutation.
 
 ## Integration
 

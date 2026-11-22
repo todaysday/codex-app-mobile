@@ -1042,6 +1042,8 @@ final class AppServerClient: ObservableObject {
         self.diagnostics.reconnectAttemptCount = self.reconnectAttempts
 
         let task = self.session.webSocketTask(with: request)
+        // 2 MiB previews are base64 encoded; keep a finite cap for the full JSON envelope.
+        task.maximumMessageSize = 4 * 1_024 * 1_024
         self.webSocketTask = task
         self.hasReceivedMessageOnCurrentConnection = false
         task.resume()

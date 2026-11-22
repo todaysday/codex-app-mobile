@@ -547,6 +547,11 @@ final class TerminalSessionViewModel: ObservableObject, @unchecked Sendable {
         guard self.state == .disconnected else {
             return
         }
+        guard host.hasSSHConfiguration else {
+            self.errorMessage = RemoteHostConfigurationError.missingSSH.localizedDescription
+            self.isShowingError = true
+            return
+        }
 
         self.configureEndpoint(host: host.host, port: host.sshPort)
         self.suppressErrorsUntilNextConnect = false

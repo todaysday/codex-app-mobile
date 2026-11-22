@@ -107,12 +107,18 @@ struct CodexSubagentThreadView: View {
     let fallback: RemoteThreadRecord?
     let openThread: (String) -> Void
     let returnToWorkbench: () -> Void
-    @State private var isLoading = false
-    @State private var hasLoaded = false
-    @State private var errorMessage: String?
+    @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var history = CodexSubagentHistoryModel()
 
     private var record: RemoteThreadRecord? { client.threadRecordsByID[threadID] ?? fallback }
-    private var transcript: String { client.transcriptByThread[threadID] ?? "" }
+    private var historyMatches: Bool { history.matches(threadID: threadID, generation: client.connectionGeneration) }
+    private var isActive: Bool {
+        (historyMatches && history.hasActiveTurn) || record?.status?.type == "active"
+    }
+    private var refreshContext: RefreshContext {
+        .init(threadID: threadID, generation: client.connectionGeneration,
+              connected: client.state == .connected, foreground: scenePhase == .active)
+    }
     private var children: [RemoteThreadRecord] {
         client.threadRecordsByID.values.filter { $0.parentThreadID == threadID && $0.id != threadID }
             .sorted { $0.updatedAt > $1.updatedAt }
@@ -128,10 +134,11 @@ struct CodexSubagentThreadView: View {
                     if let source = record.forkedFromID { LabeledContent("Forked from", value: source).font(.caption) }
                 }
                 Label("Read-only inspection", systemImage: "eye")
-                Text("Refresh to fetch the latest messages. No message is sent by opening this view.")
+                Text("Messages and tool activity refresh while this agent is active. Opening a card sends no message or command.")
                     .font(.caption).foregroundStyle(.secondary)
-                if isLoading { ProgressView("Reading thread…") }
-                if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
+                if history.isLoading { ProgressView("Reading thread…") }
+                if let errorMessage = history.errorMessage { Text(errorMessage).foregroundStyle(.red) }
+                if client.state != .connected { Text("Reconnect to refresh messages.").foregroundStyle(.secondary) }
             }
             Section("Navigation") {
                 Button("Back to Parent Workbench", action: returnToWorkbench)
@@ -142,12 +149,27 @@ struct CodexSubagentThreadView: View {
                     Button { openThread(child.id) } label: { CodexSubagentRow(record: child) }
                 }
             }
-            Section("Messages") {
-                if transcript.isEmpty {
-                    Text(hasLoaded ? "No messages were returned." : "Messages have not loaded yet.")
+            if !historyMatches || history.turns.isEmpty {
+                Section("Messages") {
+                    Text(historyMatches && history.hasLoaded ? "No messages were returned." : "Messages have not loaded yet.")
                         .foregroundStyle(.secondary)
-                } else {
-                    Text(transcript).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                ForEach(history.turns) { turn in
+                    Section {
+                        if turn.items.isEmpty { Text("No items in this turn.").foregroundStyle(.secondary) }
+                        ForEach(turn.items) { item in
+                            CodexAgentMessageCard(item: item, openThread: openThread)
+                                .listRowInsets(EdgeInsets(top: 5, leading: 12, bottom: 5, trailing: 12))
+                                .listRowSeparator(.hidden)
+                        }
+                    } header: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Turn \(turn.id)").textCase(nil)
+                            Text(turn.status == "inProgress" ? "In progress" : turn.status.capitalized).textCase(nil)
+                            if let model = turn.model { Text(model).textCase(nil) }
+                        }
+                    }
                 }
             }
         }
@@ -156,24 +178,41 @@ struct CodexSubagentThreadView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { Task { await refresh() } } label: { Image(systemName: "arrow.clockwise") }
-                    .accessibilityLabel("Refresh agent messages").disabled(isLoading || client.state != .connected)
+                    .accessibilityLabel("Refresh agent messages").disabled(history.isLoading || client.state != .connected)
             }
         }
-        .task(id: threadID) { await refresh() }
+        .task(id: refreshContext) { await followVisibleThread() }
         .refreshable { await refresh() }
+        .onDisappear { history.cancelRefresh() }
     }
 
     @MainActor
     private func refresh() async {
-        guard !isLoading, client.state == .connected else { return }
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
-        do {
-            _ = try await client.threadRead(threadID: threadID)
-            guard !Task.isCancelled else { return }
-            hasLoaded = true
-        } catch { errorMessage = client.userFacingMessage(for: error) }
+        await history.refresh(client: client, threadID: threadID)
+    }
+
+    @MainActor
+    private func followVisibleThread() async {
+        history.prepare(threadID: threadID, generation: client.connectionGeneration)
+        guard scenePhase == .active, client.state == .connected else {
+            history.cancelRefresh()
+            return
+        }
+        await refresh()
+        while !Task.isCancelled {
+            let wasActive = isActive
+            do { try await Task.sleep(for: .seconds(4)) } catch { return }
+            guard !Task.isCancelled, scenePhase == .active, client.state == .connected else { return }
+            // Also fetch once after a live completion notification changes an active child to idle.
+            if wasActive || isActive { await refresh() }
+        }
+    }
+
+    private struct RefreshContext: Hashable {
+        let threadID: String
+        let generation: Int
+        let connected: Bool
+        let foreground: Bool
     }
 }
 

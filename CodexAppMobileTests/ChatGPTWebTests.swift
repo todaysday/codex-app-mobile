@@ -64,12 +64,12 @@ final class ChatGPTWebTests: XCTestCase {
     }
 
     @MainActor
-    func testWebViewIsLazyStableAndUsesDedicatedPersistentStorage() {
+    func testWebViewIsLazyStableAndUsesDedicatedPersistentStorage() throws {
         let identifier = UUID()
         let model = ChatGPTWebViewModel(storeIdentifier: identifier)
         XCTAssertNil(model.webView)
-        let first = model.prepareWebView()
-        let second = model.prepareWebView()
+        let first = try XCTUnwrap(model.prepareWebView())
+        let second = try XCTUnwrap(model.prepareWebView())
         XCTAssertTrue(first === second)
         XCTAssertNil(first.url, "Creating or reusing the view must not start network navigation.")
         XCTAssertTrue(first.customUserAgent?.isEmpty ?? true,
@@ -121,13 +121,13 @@ final class ChatGPTWebTests: XCTestCase {
     }
 
     @MainActor
-    func testResetBlanksExistingPageAndDoesNotRaceRepeatedRequests() async {
+    func testResetBlanksExistingPageAndDoesNotRaceRepeatedRequests() async throws {
         let model = ChatGPTWebViewModel(storeIdentifier: UUID())
-        let original = model.prepareWebView()
+        let original = try XCTUnwrap(model.prepareWebView())
         let firstReset = Task { await model.clearWebsiteData() }
         await Task.yield()
         await model.clearWebsiteData()
-        await firstReset.value
+        _ = await firstReset.value
         XCTAssertNil(model.failure)
         XCTAssertFalse(model.isClearing)
         XCTAssertNil(model.webView)
@@ -138,9 +138,9 @@ final class ChatGPTWebTests: XCTestCase {
     }
 
     @MainActor
-    func testDismissedPageCallbacksCannotReplaceCurrentBrowserStatus() {
+    func testDismissedPageCallbacksCannotReplaceCurrentBrowserStatus() throws {
         let model = ChatGPTWebViewModel(storeIdentifier: UUID())
-        let active = model.prepareWebView()
+        let active = try XCTUnwrap(model.prepareWebView())
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = model.dataStore
         let discarded = WKWebView(frame: .zero, configuration: configuration)

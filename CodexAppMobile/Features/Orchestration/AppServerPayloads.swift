@@ -415,6 +415,33 @@ struct ThreadReadItemPayload: Decodable {
     let changes: [ThreadReadFileChangePayload]?
     let content: [ThreadReadUserInputPayload]?
     let summary: [JSONValue]?
+    let rawValue: JSONValue
+
+    private enum CodingKeys: String, CodingKey {
+        case id, type, text, status, command, aggregatedOutput, changes, content, summary
+    }
+
+    init(from decoder: Decoder) throws {
+        self.rawValue = try JSONValue(from: decoder)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.type = try container.decode(String.self, forKey: .type)
+        self.text = ["agentMessage", "plan"].contains(self.type)
+            ? try container.decodeIfPresent(String.self, forKey: .text) : nil
+        self.status = ["commandExecution", "fileChange"].contains(self.type)
+            ? try container.decodeIfPresent(String.self, forKey: .status) : nil
+        self.command = self.type == "commandExecution"
+            ? try container.decodeIfPresent(String.self, forKey: .command) : nil
+        self.aggregatedOutput = self.type == "commandExecution"
+            ? try container.decodeIfPresent(String.self, forKey: .aggregatedOutput) : nil
+        self.changes = self.type == "fileChange"
+            ? try container.decodeIfPresent([ThreadReadFileChangePayload].self, forKey: .changes) : nil
+        // Other variants can use these field names with different wire types.
+        self.content = self.type == "userMessage"
+            ? try container.decodeIfPresent([ThreadReadUserInputPayload].self, forKey: .content) : nil
+        self.summary = self.type == "reasoning"
+            ? try container.decodeIfPresent([JSONValue].self, forKey: .summary) : nil
+    }
 }
 
 struct ThreadReadFileChangePayload: Decodable {

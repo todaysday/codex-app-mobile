@@ -58,8 +58,9 @@ final class RemoteHostStore: ObservableObject {
             return false
         }
         let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedHost = draft.host.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedUser = draft.username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedHost = draft.usesSSH ? draft.host.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        let trimmedUser = draft.usesSSH ? draft.username.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        let sshPort = draft.usesSSH ? draft.sshPort : 22
         let resolvedAppServerURL = draft.resolvedAppServerURL
         var updatedHosts = self.hosts
 
@@ -68,29 +69,32 @@ final class RemoteHostStore: ObservableObject {
             var hostRecord = updatedHosts[index]
             hostRecord.name = trimmedName
             hostRecord.host = trimmedHost
-            hostRecord.sshPort = draft.sshPort
+            hostRecord.sshPort = sshPort
             hostRecord.username = trimmedUser
             hostRecord.appServerURL = resolvedAppServerURL
             hostRecord.appServerAuthentication = authentication
             hostRecord.preferredTransport = draft.preferredTransport
             hostRecord.updatedAt = Date()
             updatedHosts[index] = hostRecord
-            self.credentialStore.save(password: draft.password, for: hostID)
         } else {
             let hostRecord = RemoteHost(
                 id: recordID,
                 name: trimmedName,
                 host: trimmedHost,
-                sshPort: draft.sshPort,
+                sshPort: sshPort,
                 username: trimmedUser,
                 appServerURL: resolvedAppServerURL,
                 appServerAuthentication: authentication,
                 preferredTransport: draft.preferredTransport
             )
             updatedHosts.append(hostRecord)
-            self.credentialStore.save(password: draft.password, for: hostRecord.id)
         }
 
+        if draft.usesSSH {
+            self.credentialStore.save(password: draft.password, for: recordID)
+        } else {
+            self.credentialStore.deletePassword(for: recordID)
+        }
         self.replaceHosts(updatedHosts, persist: true)
         return true
     }
@@ -222,6 +226,19 @@ final class ProjectStore: ObservableObject {
 
         self.sortAndPersist()
         return resolvedWorkspaceID
+    }
+
+    func registerWorktree(path: String, inheriting source: ProjectWorkspace) -> ProjectWorkspace {
+        if let existing = self.workspaces.first(where: { $0.hostID == source.hostID && $0.remotePath == path }) {
+            return existing
+        }
+        // Git paths are already validated by the caller. Preserve significant whitespace.
+        let workspace = ProjectWorkspace(hostID: source.hostID, name: "", remotePath: path,
+                                         defaultModel: source.defaultModel,
+                                         defaultApprovalPolicy: source.defaultApprovalPolicy)
+        self.workspaces.append(workspace)
+        self.sortAndPersist()
+        return workspace
     }
 
     func delete(workspaceID: UUID) {

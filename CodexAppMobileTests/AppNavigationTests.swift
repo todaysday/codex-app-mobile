@@ -47,12 +47,18 @@ final class AppNavigationTests: XCTestCase {
         sessions.selectThread(hostID: hostID, threadID: "existing-thread")
         let client = state.appServerClient
         let navigation = AppNavigationState()
-        let browser = ChatGPTWebViewModel(storeIdentifier: UUID(), initialURL: URL(string: "about:blank")!)
-        let firstWebView = browser.prepareWebView()
+        let firstProfile = ChatGPTWebProfile(id: UUID(), name: "First account")
+        let profiles = ChatGPTWebProfiles(defaults: defaults, initialProfile: firstProfile,
+                                         initialURL: URL(string: "about:blank")!)
+        let secondProfile = try profiles.addProfile(named: "Second account")
+        let thirdProfile = try profiles.addProfile(named: "Third account")
+        XCTAssertTrue(profiles.select(firstProfile.id))
+        let browser = profiles.selectedModel
+        let firstWebView = try XCTUnwrap(browser.prepareWebView())
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previousKeyWindow = scene.windows.first(where: \.isKeyWindow)
         let window = UIWindow(windowScene: scene)
-        window.rootViewController = UIHostingController(rootView: AppShellView(chatGPT: browser)
+        window.rootViewController = UIHostingController(rootView: AppShellView(chatGPT: profiles)
             .environmentObject(state).environmentObject(navigation))
         window.makeKeyAndVisible()
         defer {
@@ -64,6 +70,24 @@ final class AppNavigationTests: XCTestCase {
         navigation.selectedTab = .chatGPT
         let firstMount = await waitUntil { firstWebView.isDescendant(of: window) }
         XCTAssertTrue(firstMount, "The browser must actually be mounted in the live tab hierarchy.")
+        XCTAssertTrue(profiles.select(secondProfile.id))
+        let secondBrowser = profiles.selectedModel
+        let secondWebView = try XCTUnwrap(secondBrowser.prepareWebView())
+        let accountSwitch = await waitUntil { secondWebView.isDescendant(of: window) }
+        XCTAssertTrue(accountSwitch, "The second account must mount its own browser, not reuse the first store.")
+        XCTAssertFalse(firstWebView.isDescendant(of: window))
+        XCTAssertTrue(profiles.select(thirdProfile.id))
+        let thirdBrowser = profiles.selectedModel
+        let thirdWebView = try XCTUnwrap(thirdBrowser.prepareWebView())
+        let thirdMount = await waitUntil { thirdWebView.isDescendant(of: window) }
+        XCTAssertTrue(thirdMount)
+        XCTAssertFalse(secondWebView.isDescendant(of: window))
+        XCTAssertTrue(profiles.select(firstProfile.id))
+        let accountReturn = await waitUntil { firstWebView.isDescendant(of: window) }
+        XCTAssertTrue(accountReturn)
+        XCTAssertTrue(secondBrowser.webView === secondWebView)
+        XCTAssertFalse(secondWebView.isDescendant(of: window))
+
         navigation.selectedTab = .settings
         await settleLayout(in: window)
         navigation.selectedTab = .codex
@@ -79,6 +103,13 @@ final class AppNavigationTests: XCTestCase {
         XCTAssertTrue(browser.webView === firstWebView)
         XCTAssertNil(browser.failure)
         firstWebView.stopLoading()
+        secondWebView.stopLoading()
+        thirdWebView.stopLoading()
+        navigation.selectedTab = .settings
+        await settleLayout(in: window)
+        await browser.clearWebsiteData()
+        await secondBrowser.clearWebsiteData()
+        await thirdBrowser.clearWebsiteData()
     }
 
     @MainActor

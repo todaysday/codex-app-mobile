@@ -82,6 +82,24 @@ Run these against the same identified IPA and the existing App Server. Record th
 | C11 | Submit a prompt while connecting, then select another thread or host before the request finishes. | The request retains its original target and settings or reports the connection change. It does not send to the newly selected thread or change the user's newer selection. | Pending |
 | C12 | Cause a recoverable submission failure, type newer input, and use Add to draft for the saved failed input. | Both inputs and their context tokens remain recoverable in the original scope; nothing is sent automatically. | Pending |
 
+## Named profiles and workspace review checks
+
+These checks apply to the review-fix build, including the user's clarification that Settings must explicitly add more than two web profiles. Automated cookie fixtures do not establish real ChatGPT authentication.
+
+| ID | Action | Expected result | Status / evidence |
+| --- | --- | --- | --- |
+| R01 | Upgrade from the original single-profile build, open ChatGPT, then add two or more named profiles from Settings. | The original still-valid login remains in the first profile. Add Profile creates independent empty profiles without a two-profile limit. | Pending |
+| R02 | Sign into the intended distinct ChatGPT accounts in separate profiles; switch among at least three profiles, including one signed-out profile. | Each profile shows only its own website account/history and keeps its own browser state; labels do not pretend to verify identity. | Pending |
+| R03 | Rename a profile, select another, terminate and relaunch. | Names, selection, and each still-valid website session persist independently. | Pending |
+| R04 | Cancel then confirm clearing one profile. Delete another profile after checking the confirmation names it. | Cancel changes nothing. Confirmed clear/delete affects only that profile; other web profiles and Codex credentials remain usable. The last profile is retained and can be cleared. | Pending |
+| R05 | Start an OAuth popup or download, then try switching/deleting a profile. | The in-progress interaction remains bound to its initiating profile; switching/deletion waits until it can finish or be dismissed. | Pending |
+| R06 | Create a host with only its name, WSS endpoint, and required App Server credentials; leave SSH fallback off. | Save and connection work without SSH host/username/port/password. SSH terminal and legacy SSH Git controls do not attempt a blank connection. | Pending |
+| R07 | Inspect an active child with messages, command output, MCP calls and file changes. | Separate Markdown and action/tool/file cards show actual payloads and refresh; returning preserves the parent draft and sends no new prompt. | Pending |
+| R08 | Browse a workspace over WSS and open representative text/code, image and PDF files; try an oversized file and symbolic link. | Supported files preview, images zoom, text selects, PDFs navigate. Files over 2 MiB and symbolic links produce clear limits. | Pending |
+| R09 | In a designated test repository, list worktrees, create a new branch/worktree, explicitly open it, then return. | Exact paths/branches are used and the worktree becomes a same-host project without starting a turn. | Pending |
+| R10 | Try removing main/current/locked and dirty worktrees; cancel an eligible removal, then confirm removal of a clean test worktree. | Protected/dirty worktrees remain. Cancel is harmless; successful removal keeps the branch and local project record, with no force. | Pending |
+| R11 | Disconnect or change host while loading files, child history, or worktree data. | Results never appear as data from the new connection; failed mutations are not replayed automatically. | Pending |
+
 ## Failure record
 
 For a failed gate, record the test ID, commit, device/iOS, short reproducible steps, exact safe error text, expected result, and observed result. Remove private content and any token-bearing URLs from screenshots. Keep failed and unperformed gates distinct.

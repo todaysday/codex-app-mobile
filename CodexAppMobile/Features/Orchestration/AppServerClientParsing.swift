@@ -1132,7 +1132,8 @@ extension AppServerClient {
                 status: turn.status,
                 items: items,
                 model: Self.nonEmpty(turn.model),
-                reasoningEffort: Self.normalizedReasoningEffort(turn.reasoningEffort)
+                reasoningEffort: Self.normalizedReasoningEffort(turn.reasoningEffort),
+                rawItems: turn.items.map(\.rawValue)
             )
         }
 

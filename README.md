@@ -4,15 +4,15 @@ A standalone SwiftUI iPhone app for your **existing Codex App Server**, with a s
 
 This project extends [shuto-S/codex-app-mobile](https://github.com/shuto-S/codex-app-mobile), preserving its Codex interface and SSH fallback. [Akuma1tko/ChatGPT-WebView](https://github.com/Akuma1tko/ChatGPT-WebView) is the minimal web-companion reference. Exact source revisions and reuse decisions are in [UPSTREAM.md](docs/UPSTREAM.md).
 
-**Delivery status:** [macOS CI #6 passed](https://github.com/todaysday/codex-app-mobile/actions/runs/45036419930): **196 XCTest cases**, **8 Python tooling tests**, and the unsigned iPhoneOS Release build. [Download `CodexMobile-unsigned-6`](https://github.com/todaysday/codex-app-mobile/actions/runs/45036419930/artifacts/14759824839) — version **1.0 (6)**, arm64, iOS 18.0+. The downloaded IPA, checksum, and source provenance were independently verified. [Verification record](docs/VERIFICATION.md); [physical-device acceptance remains pending](docs/DEVICE_ACCEPTANCE.md).
+**Delivery status:** the previous verified baseline is [macOS CI #6](https://github.com/todaysday/codex-app-mobile/actions/runs/45036419930), with 196 XCTest cases and an unsigned IPA. The additional named web profiles, rich subagent cards, WSS-only hosts, file previews, and worktrees in the current source require a new complete CI run. [Verification record](docs/VERIFICATION.md); [physical-device acceptance remains pending](docs/DEVICE_ACCEPTANCE.md).
 
 ## What is included
 
 | Destination | Behavior |
 | --- | --- |
 | **Codex** | Existing Hosts → Projects → Threads workflow, workspace CWD, create/resume/fork/archive, model/reasoning/collaboration controls, streaming, approvals, user-input requests, slash commands/MCP/skills, SSH terminal, and local notifications. |
-| **ChatGPT** | Official `https://chatgpt.com` in a retained WKWebView, a dedicated persistent web profile, loading/error state, back/forward/reload controls, Safari fallback, and confirmed web-data clearing. |
-| **Settings** | Access to the existing host configuration, ChatGPT data/diagnostics, app version/build identity, and attribution. |
+| **ChatGPT** | Official `https://chatgpt.com`, named independent web profiles, retained browser state per profile, loading/error state, back/forward/reload controls, Safari fallback, and confirmed profile-specific data clearing. |
+| **Settings** | Explicit Add Web Account, profile list/switch/rename/delete, host configuration, ChatGPT data/diagnostics, app version/build identity, and attribution. |
 
 The ChatGPT website decides which features the signed-in account receives. The user's actual Google, Apple, email, or passkey login and required Pro/web functionality must be verified on the iPhone. A functioning Safari fallback does not prove that embedded login works.
 
@@ -26,9 +26,11 @@ Open a Codex thread and use its header menu:
 | --- | --- |
 | **Thread Controls → Goal** | Read or edit the objective and token budget, pause/resume, mark complete, or explicitly clear the goal. Shows the server's status, tokens, and elapsed time. |
 | **Thread Controls → Thread Actions** | Rename the thread, request context compaction, or select a real turn and confirm removal of that turn and later conversation history. History revert does **not** undo changes to files. |
-| **Subagents** | Browse reported parent/child relationships, roles, status, and child messages. Return to the parent workbench without creating a session or sending a prompt. |
+| **Subagents** | Browse reported relationships and rich message cards: Markdown, commands and output, tool arguments/results/errors, per-file changes, and agent actions. Active children refresh while visible; inspection sends no prompt or command. |
 | **Current Turn** | Inspect the structured plan, latest aggregate server diff, and separate latest/cumulative token counters. |
 | **Model details** | Show the connected server's advertised description, supported inputs, reasoning choices, and available service tiers. Model names are not hardcoded. |
+| **Project → Files** | Navigate workspace files and preview text/code, images, and PDFs up to 2 MiB through the App Server. Previews are read-only and symbolic links are not followed by the browser. |
+| **Project / Git menu → Worktrees** | List worktrees, create one with a new branch, explicitly open it as a project, and confirm removal of an eligible clean worktree. Uses official `command/exec` with Git argv, without requiring SSH. |
 
 Thread discovery follows all returned pages and includes official source kinds where supported. Read/resume restores complete history and the known active turn. Follow-ups steer that exact turn; an interrupt remains pending until the server reports completion. Older servers keep their supported behavior and show unavailable optional controls explicitly.
 
@@ -50,9 +52,9 @@ The app bundle ID is `dev.todaysday.codexmobile`; its test bundle is `dev.todays
 
 1. Confirm the address and transport of the App Server already running on the VPS. Do not start a second instance for this client. Its existing VPS-side authorization and `CODEX_HOME` remain the source of the Codex account and sessions.
 2. Open **Codex → Hosts → `+`** or the host entrypoint in Settings.
-3. Enter the host metadata and the full protected App Server endpoint, for example `wss://codex.example.test/socket`. The full URL preserves its scheme, path, and explicit port through edits. The example is a placeholder, not a supplied server.
+3. Enter a name, select App Server, and enter the full protected endpoint, for example `wss://codex.example.test/socket`. SSH fields are optional. The full URL preserves its scheme, path, and explicit port through edits. The example is a placeholder, not a supplied server.
 4. Choose the proxy authentication your deployment actually needs: none, bearer token, or Cloudflare Access service-token client ID/secret. Secrets are stored in iOS Keychain and sent only with the App Server handshake.
-5. Open a project workspace, select an existing thread, and use the retained Codex controls. The host context menu exposes the SSH terminal fallback.
+5. Open a project workspace, select an existing thread, and use the retained Codex controls. Enable **Add SSH fallback** only if you also want the SSH terminal and the existing SSH commit/push/diff actions; these controls are unavailable without SSH configuration. File previews and worktrees use the App Server connection.
 
 For a Release IPA, use **WSS with valid TLS through an authenticated/protected route**. A server listening only at `127.0.0.1` on the VPS needs a route reachable from the phone; entering `localhost` on the phone does not reach the VPS. This project does not deploy or alter that route automatically.
 
@@ -62,13 +64,21 @@ If you use Tailscale for Codex and LocalDevVPN for SideStore refresh, plan to sw
 
 ## Use ChatGPT Web
 
-Open the **ChatGPT** tab and sign into the intended web account using its normal method. It can be different from the Codex account on the VPS. The browser model and current page survive switching tabs; a named persistent WebKit data store retains valid website login data between launches.
+Open **Settings → Web Accounts and Browser Data** and use **Add Web Account** to create a named browser profile. Add as many profiles as your workflow needs; two is an example, not a fixed limit. Choose a profile in Settings or the ChatGPT profile menu, then sign into its intended account through the normal website. Profiles do not infer an email address or account entitlement from their names.
 
-**Clear ChatGPT Web Data** requires confirmation and resets only that dedicated website profile, including its associated authentication-site data. It does not clear Codex hosts or Keychain credentials, Safari, or the official ChatGPT app.
+Each profile has a separate persistent WebKit data store and its own retained browser/history. The first profile reuses the original store so upgrading does not discard the existing login. The selected profile and profile names survive app restarts; valid website login data persists independently. Finish a popup, download, dialog, or data reset before switching profiles.
+
+Settings supports renaming and confirmed removal of individual profiles. Clearing web data names the affected profile and resets only its website and authentication-site data. Removing a profile clears its data before removing it from the list; the last profile can be cleared but is retained. Other web profiles, Codex hosts/credentials, Safari, and the official ChatGPT app remain separate. Automated tests use controlled session cookies; actual multi-account ChatGPT OAuth remains a physical-device acceptance check.
 
 The browser uses WebKit's normal user agent and platform permissions. It does not inject login scripts, extract tokens, impersonate the official app, or bypass website protections. If embedded OAuth is rejected, use the explicit **Open in Browser** fallback and record the failure. This action opens a SafariServices browser sheet with a separate session; logging in there is not promised to log in the embedded WebView.
 
 Actual file upload, microphone/voice, camera, downloads, and account-specific web features are covered by the physical checklist when used. iOS may suspend either network connection in the background; this app does not promise an always-running background socket or a remote push service.
+
+## Workspace files and worktrees
+
+Open the project menu for **Files** and **Worktrees**. Worktrees are also available from the Git menu. Both use the current App Server connection without SSH. The existing server must support the inspected filesystem methods and `command/exec`; the Unix host needs `wc` for preview size checks and Git for worktree operations.
+
+Workspace previews use the official full-file RPC after a bounded size check; files over 2 MiB show an explicit limit. Text/code is selectable, images support zoom, and PDFs use the native PDF viewer. Worktree removal rechecks repository state, blocks the main/current/locked/prunable worktree and tracked, untracked, or ignored local changes, and never uses force or deletes a branch. Existing local project entries are not silently deleted. Move, lock/unlock, prune, and arbitrary binary editing are outside this implementation.
 
 ## Build an unsigned IPA with GitHub Actions
 
@@ -136,6 +146,7 @@ The application uses SwiftUI, Swift Concurrency, WebKit, URLSession, and the ups
 - Capability specifications: [app shell](openspec/changes/add-chatgpt-web-companion/specs/app-shell/spec.md), [isolated ChatGPT Web](openspec/changes/add-chatgpt-web-companion/specs/isolated-chatgpt-web/spec.md), [existing Codex connection](openspec/changes/add-chatgpt-web-companion/specs/secure-existing-codex/spec.md), [unsigned distribution](openspec/changes/add-chatgpt-web-companion/specs/unsigned-ios-distribution/spec.md)
 - [Physical device acceptance and unresolved gates](docs/DEVICE_ACCEPTANCE.md)
 - [Official Codex source review](docs/OFFICIAL_CODEX_REVIEW.md), [controls proposal](openspec/changes/add-official-codex-controls/proposal.md), and [capability roadmap](docs/ROADMAP.md)
+- Review corrections: [named profiles](openspec/changes/add-independent-chatgpt-profiles/proposal.md), [rich subagent history](openspec/changes/add-rich-subagent-messages/proposal.md), [WSS-only hosts](openspec/changes/allow-app-server-only-hosts/proposal.md), and [files/worktrees](openspec/changes/add-workspace-files-and-worktrees/proposal.md).
 - [Thread-scoped composer proposal and tasks](openspec/changes/fix-thread-scoped-composer/proposal.md)
 - [Original user handoff](docs/handoff/Codex_ChatGPT_Mobile_Handoff.md)
 

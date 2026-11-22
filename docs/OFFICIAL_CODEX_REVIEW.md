@@ -27,7 +27,7 @@ The stable release already includes remote exec against an existing App Server a
 | --- | --- | --- | --- |
 | Sessions | Start/read/resume/fork/archive, selected-thread reattach | All-source cursor pagination, loaded status, paginated history | Default source filter hides noninteractive sessions; new history paths need legacy fallback |
 | Goals | No goal model/panel | Get/set/clear, counters, status, user mutation origin | Stable methods in 0.171; isolate unsupported older servers |
-| Subagents | Generic records without lineage | Parent/ancestor queries, names/roles/status, child transcript | Relationship queries and direct-input capability are experimental |
+| Subagents | Generic records without lineage | Parent/ancestor queries, names/roles/status, structured message/action/tool cards from original item payloads | Relationship queries and direct-input capability are experimental |
 | Steering | Correct `expectedTurnId` request already exists | Recover active turn from snapshots; preserve precondition | Do not create a new turn merely to attach |
 | Interrupt | Request exists | Wait for matching completion after request acceptance | Optimistic clearing of active state needs correction |
 | Approvals | Command/file choices, amendments, resolved-request removal | Human-command restrictions and explicit permission grant/deny profiles | Scope and profile response differ from command decisions |
@@ -36,7 +36,7 @@ The stable release already includes remote exec against an existing App Server a
 | Models | Pagination, reasoning/default/upgrade/availability | Description, modalities, multi-agent version, service tiers | New metadata must be optional; no fixed model names |
 | Plan/diff | Plan text streaming, SSH working-tree diff | Structured plan and current aggregate turn diff | Keep these observations distinct from SSH Git |
 | Maintenance | Fork/archive exist | Rename, compact, confirmed history revert | Current API is `thread/revert`; rollback was removed |
-| Files/worktrees | SSH path and Git operations exist | Stable filesystem reads can support previews | No unverified native worktree-management method is asserted |
+| Files/worktrees | SSH path and Git operations exist | Workspace text/image/PDF previews and Git worktree list/create/open/remove through the existing App Server | Full-file reads only, 2 MiB preview cap, verified `command/exec` argv rather than a native `worktree/*` RPC |
 
 ## Confirmed protocol gaps
 
@@ -70,7 +70,11 @@ The implementation review also checked two lifecycle details beyond the DTOs. [G
 
 [Structured plan/diff events](https://github.com/openai/codex/blob/ccf9be8cc458bd6b8336fe84d68d8893f2691a5e/codex-rs/app-server-protocol/src/protocol/v2/turn.rs#L623-L657) and [model metadata](https://github.com/openai/codex/blob/ccf9be8cc458bd6b8336fe84d68d8893f2691a5e/codex-rs/app-server-protocol/src/protocol/v2/model.rs#L53-L184) are suitable native workbench additions. Aggregate diffs replace earlier snapshots; they are not appended as text deltas.
 
-[Filesystem reads](https://github.com/openai/codex/blob/ccf9be8cc458bd6b8336fe84d68d8893f2691a5e/codex-rs/app-server-protocol/src/protocol/v2/fs.rs#L1-L123) are an available preview foundation. `fs/readFile` returns a full base64 file, so document preview needs explicit response-size and supported-content handling. Internal release preview helpers are not evidence of an invented bounded public RPC.
+[Filesystem reads](https://github.com/openai/codex/blob/ccf9be8cc458bd6b8336fe84d68d8893f2691a5e/codex-rs/app-server-protocol/src/protocol/v2/fs.rs) supply the implemented preview: `fs/readDirectory`, `fs/getMetadata`, and `fs/readFile`. Metadata has type/symlink flags but no byte size; readFile returns the full base64 file without range/limit parameters. The client checks size through bounded `wc -c -- <path>`, then validates the base64/decoded size against 2 MiB and preserves a finite 4 MiB WebSocket frame cap.
+
+[command/exec](https://github.com/openai/codex/blob/ccf9be8cc458bd6b8336fe84d68d8893f2691a5e/codex-rs/app-server-protocol/src/protocol/v2/command_exec.rs) accepts `command` as argv, `cwd`, `timeoutMs`, and `outputBytesCap`, returning buffered `exitCode`, `stdout`, and `stderr`. The implemented worktree manager uses these fields for Git list/create/status/remove and never supplies a policy override or shell interpolation. Its porcelain parser handles NUL records and significant whitespace. Removal refreshes the list, blocks protected worktrees and local files, and omits force. See the [workspace design](../openspec/changes/add-workspace-files-and-worktrees/design.md) for exact requests and limits.
+
+[Official item variants](https://github.com/openai/codex/blob/ccf9be8cc458bd6b8336fe84d68d8893f2691a5e/codex-rs/app-server-protocol/src/protocol/v2/item.rs) now remain available as raw payloads through history decoding. Native child cards use real fields for commands, file diffs, MCP/dynamic tools, collaboration, and reported reasoning summaries; unknown variants show bounded structured details. The old conversion's assumption that every `content` field was user input was incorrect for reasoning items and has been corrected.
 
 ## Implementation decision
 

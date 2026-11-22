@@ -96,6 +96,16 @@ struct RemoteHost: Identifiable, Codable, Equatable {
     var createdAt: Date
     var updatedAt: Date
 
+    var hasSSHConfiguration: Bool {
+        !self.host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !self.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (1...65535).contains(self.sshPort)
+    }
+
+    func requireSSHConfiguration() throws {
+        guard self.hasSSHConfiguration else { throw RemoteHostConfigurationError.missingSSH }
+    }
+
     init(
         id: UUID = UUID(),
         name: String,
@@ -142,9 +152,9 @@ struct RemoteHost: Identifiable, Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         self.name = try container.decode(String.self, forKey: .name)
-        self.host = try container.decode(String.self, forKey: .host)
+        self.host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
         self.sshPort = try container.decodeIfPresent(Int.self, forKey: .sshPort) ?? 22
-        self.username = try container.decode(String.self, forKey: .username)
+        self.username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
         self.appServerURL = try container.decodeIfPresent(String.self, forKey: .appServerURL)
             ?? Self.defaultAppServerURL(host: self.host)
         self.appServerAuthentication = try container.decodeIfPresent(
@@ -170,6 +180,14 @@ struct RemoteHost: Identifiable, Codable, Equatable {
     }
 }
 
+enum RemoteHostConfigurationError: LocalizedError {
+    case missingSSH
+
+    var errorDescription: String? {
+        "SSH is not configured for this host. Add SSH settings to use the terminal and SSH Git actions."
+    }
+}
+
 struct RemoteHostDraft {
     var name: String
     var host: String
@@ -181,6 +199,11 @@ struct RemoteHostDraft {
     var password: String
     var appServerEndpoint: String
     var appServerCredentials: AppServerCredentials?
+    var sshFallbackEnabled: Bool
+
+    var usesSSH: Bool {
+        self.preferredTransport == .ssh || self.sshFallbackEnabled
+    }
 
     var resolvedAppServerURL: String {
         let endpoint = self.appServerEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -208,12 +231,10 @@ struct RemoteHostDraft {
         let trimmedHost = self.host.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedUser = self.username.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        guard !trimmedName.isEmpty,
-              !trimmedHost.isEmpty,
-              !trimmedUser.isEmpty,
-              (1...65535).contains(self.sshPort)
-        else {
-            return false
+        guard !trimmedName.isEmpty else { return false }
+        if self.usesSSH {
+            guard !trimmedHost.isEmpty, !trimmedUser.isEmpty,
+                  (1...65535).contains(self.sshPort) else { return false }
         }
 
         if self.appServerEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -236,7 +257,8 @@ struct RemoteHostDraft {
         preferredTransport: TransportKind,
         password: String,
         appServerEndpoint: String = "",
-        appServerCredentials: AppServerCredentials? = nil
+        appServerCredentials: AppServerCredentials? = nil,
+        sshFallbackEnabled: Bool? = nil
     ) {
         self.name = name
         self.host = host
@@ -248,6 +270,10 @@ struct RemoteHostDraft {
         self.password = password
         self.appServerEndpoint = appServerEndpoint
         self.appServerCredentials = appServerCredentials
+        self.sshFallbackEnabled = sshFallbackEnabled
+            ?? (!host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || !password.isEmpty)
     }
 
     init(host: RemoteHost, password: String) {
@@ -267,6 +293,7 @@ struct RemoteHostDraft {
         self.password = password
         self.appServerEndpoint = host.appServerURL
         self.appServerCredentials = nil
+        self.sshFallbackEnabled = host.hasSSHConfiguration
     }
 }
 
@@ -527,6 +554,17 @@ struct CodexTurn: Identifiable, Equatable {
     let items: [CodexTurnItem]
     let model: String?
     let reasoningEffort: String?
+    let rawItems: [JSONValue]
+
+    init(id: String, status: String, items: [CodexTurnItem], model: String?,
+         reasoningEffort: String?, rawItems: [JSONValue] = []) {
+        self.id = id
+        self.status = status
+        self.items = items
+        self.model = model
+        self.reasoningEffort = reasoningEffort
+        self.rawItems = rawItems
+    }
 }
 
 struct CodexThreadDetail: Equatable {

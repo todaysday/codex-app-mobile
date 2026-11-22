@@ -136,7 +136,7 @@ THEN it selects the first registered profile without changing profile identifier
 
 ### Requirement: Confirmed individual profile deletion
 
-The application SHALL ask for confirmation naming a profile before deleting it. It SHALL clear that profile's website data successfully before removing its registration and retained browser. It SHALL serialize registry mutations during deletion, retain the registration if cleanup fails, and always leave at least one available profile.
+The application SHALL ask for confirmation naming a profile before deleting it. It SHALL clear that profile's website data successfully before removing its registration and retained browser. It SHALL wait for pending browser interactions to finish, suspend the target model before cleanup so late view tasks cannot recreate its browser, serialize registry mutations during deletion, retain the registration if cleanup fails, and always leave at least one available profile.
 
 #### Scenario: Delete an inactive profile
 
@@ -151,6 +151,20 @@ GIVEN at least two profiles exist
 WHEN the user confirms deleting the selected profile
 THEN only its website data is cleared
 AND a remaining existing profile becomes selected and is restored on the next launch.
+
+#### Scenario: A deleted screen schedules a late reload
+
+GIVEN cleanup succeeded and a profile was removed
+WHEN a discarded screen requests load, home, reload, or browser creation on its retained old model
+THEN no new page is created or navigated for that removed profile
+AND the cleared store cannot be repopulated by that obsolete UI action.
+
+#### Scenario: A profile has unfinished browser interaction
+
+GIVEN the selected or target profile has a pending popup, dialog, browser/share sheet, download, or data reset
+WHEN the user attempts to delete a profile
+THEN deletion is unavailable until the interaction finishes
+AND the registry and sessions remain unchanged.
 
 #### Scenario: Cleanup fails
 

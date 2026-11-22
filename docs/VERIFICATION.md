@@ -2,7 +2,11 @@
 
 This record separates source validation, hosted iOS verification, and physical-device acceptance.
 
-## Verified build
+## Current review fixes
+
+The current source adds an extensible named web-profile registry with Settings Add/Rename/Delete, structured subagent cards, WSS-only hosts, workspace file previews and worktree tools. Portable validation passes with 60 registered Swift files, seven OpenSpec changes, 64 requirements and 160 scenarios, plus eight Python tooling tests. The full macOS XCTest/Release run for these changes is pending; the baseline evidence below does not certify the new source. Real ChatGPT authentication, the existing VPS and physical-device gates remain pending.
+
+## Previous verified baseline
 
 - Repository: `todaysday/codex-app-mobile`
 - Code commit: `0a1f8b107324faed81acd7ca76858b7bd97c7c8a`

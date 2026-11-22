@@ -62,6 +62,18 @@
 		D39E156717F2514BEBC2117B /* OfficialRequestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C413D1453E79E4D15CF51668 /* OfficialRequestTests.swift */; };
 		F03B9E907DAED01B6CB8BB7B /* CodexComposerDraftStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85E4C887A09BFD2327954080 /* CodexComposerDraftStore.swift */; };
 		5A1405C7A70AC947AA780F1E /* CodexComposerDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB6140DDC49CD291389DCA2C /* CodexComposerDraftTests.swift */; };
+		6BCD7BF721265EB26C239D1B /* ChatGPTWebProfiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F4287ABDC86FD41619DB829 /* ChatGPTWebProfiles.swift */; };
+		2195883221A9B3E689A80896 /* AppServerWorkspaceTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FDA0AA6E75EFE0DB78C8495 /* AppServerWorkspaceTools.swift */; };
+		8B8A4B4D66CACB1A4467FA59 /* CodexAgentHistoryItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAA9F9CBD7B5B1EEABA679B7 /* CodexAgentHistoryItem.swift */; };
+		3DD468BA7118FE01A394813A /* CodexAgentMessageCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B48B2B9C9885534DC0A791 /* CodexAgentMessageCard.swift */; };
+		99CF6F417552A38552176151 /* CodexSubagentHistoryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78593269D25BA04D1A92523B /* CodexSubagentHistoryModel.swift */; };
+		582F04AC858399FB5B579E8B /* CodexWorkspaceFilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 284BF94A130831DACB743066 /* CodexWorkspaceFilesView.swift */; };
+		EB6ABAE41EC0FD014FFA73B1 /* CodexWorkspaceTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EC24C29D4949805B5E55BE9 /* CodexWorkspaceTools.swift */; };
+		66A03730BEE140DEE4A6C9E2 /* CodexWorktreesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F884A4CF3791EEBA9D648625 /* CodexWorktreesView.swift */; };
+		B40BC4677DDFFD4EB12EC23F /* ChatGPTWebProfileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99B3A7A972028C86BB202E19 /* ChatGPTWebProfileTests.swift */; };
+		4F4C13E1B60015DAC61E8FB1 /* CodexSubagentHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0840CB3E3C14D3F61BEB7220 /* CodexSubagentHistoryTests.swift */; };
+		9F1B7C2F8E3CD82D2ADC31E1 /* HostConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E63D771C95434BBF3110EE7E /* HostConfigurationTests.swift */; };
+		3EB807568141B58E92DCBC8C /* CodexWorkspaceToolsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB00831C6C67C928297F886F /* CodexWorkspaceToolsTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -131,6 +143,18 @@
 		C413D1453E79E4D15CF51668 /* OfficialRequestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfficialRequestTests.swift; sourceTree = "<group>"; };
 		85E4C887A09BFD2327954080 /* CodexComposerDraftStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Orchestration/CodexComposerDraftStore.swift; sourceTree = "<group>"; };
 		AB6140DDC49CD291389DCA2C /* CodexComposerDraftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexComposerDraftTests.swift; sourceTree = "<group>"; };
+		9F4287ABDC86FD41619DB829 /* ChatGPTWebProfiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ChatGPTWeb/ChatGPTWebProfiles.swift; sourceTree = "<group>"; };
+		9FDA0AA6E75EFE0DB78C8495 /* AppServerWorkspaceTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Orchestration/AppServerWorkspaceTools.swift; sourceTree = "<group>"; };
+		EAA9F9CBD7B5B1EEABA679B7 /* CodexAgentHistoryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Orchestration/CodexAgentHistoryItem.swift; sourceTree = "<group>"; };
+		C0B48B2B9C9885534DC0A791 /* CodexAgentMessageCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Orchestration/CodexAgentMessageCard.swift; sourceTree = "<group>"; };
+		78593269D25BA04D1A92523B /* CodexSubagentHistoryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Orchestration/CodexSubagentHistoryModel.swift; sourceTree = "<group>"; };
+		284BF94A130831DACB743066 /* CodexWorkspaceFilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Orchestration/CodexWorkspaceFilesView.swift; sourceTree = "<group>"; };
+		1EC24C29D4949805B5E55BE9 /* CodexWorkspaceTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Orchestration/CodexWorkspaceTools.swift; sourceTree = "<group>"; };
+		F884A4CF3791EEBA9D648625 /* CodexWorktreesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Orchestration/CodexWorktreesView.swift; sourceTree = "<group>"; };
+		99B3A7A972028C86BB202E19 /* ChatGPTWebProfileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTWebProfileTests.swift; sourceTree = "<group>"; };
+		0840CB3E3C14D3F61BEB7220 /* CodexSubagentHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexSubagentHistoryTests.swift; sourceTree = "<group>"; };
+		E63D771C95434BBF3110EE7E /* HostConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostConfigurationTests.swift; sourceTree = "<group>"; };
+		FB00831C6C67C928297F886F /* CodexWorkspaceToolsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexWorkspaceToolsTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -175,6 +199,14 @@
 		A1B2C3D4E5F6010000000007 /* CodexAppMobile */ = {
 			isa = PBXGroup;
 				children = (
+				F884A4CF3791EEBA9D648625 /* CodexWorktreesView.swift */,
+				1EC24C29D4949805B5E55BE9 /* CodexWorkspaceTools.swift */,
+				284BF94A130831DACB743066 /* CodexWorkspaceFilesView.swift */,
+				78593269D25BA04D1A92523B /* CodexSubagentHistoryModel.swift */,
+				C0B48B2B9C9885534DC0A791 /* CodexAgentMessageCard.swift */,
+				EAA9F9CBD7B5B1EEABA679B7 /* CodexAgentHistoryItem.swift */,
+				9FDA0AA6E75EFE0DB78C8495 /* AppServerWorkspaceTools.swift */,
+				9F4287ABDC86FD41619DB829 /* ChatGPTWebProfiles.swift */,
 				85E4C887A09BFD2327954080 /* CodexComposerDraftStore.swift */,
 				6BDA1DC1B7C5C01B2878AF15 /* CodexThreadDetailsView.swift */,
 				B531715487243C9E67E772E8 /* CodexThreadControlsView.swift */,
@@ -227,6 +259,10 @@
 		A1B2C3D4E5F6010000000008 /* CodexAppMobileTests */ = {
 			isa = PBXGroup;
 			children = (
+				FB00831C6C67C928297F886F /* CodexWorkspaceToolsTests.swift */,
+				E63D771C95434BBF3110EE7E /* HostConfigurationTests.swift */,
+				0840CB3E3C14D3F61BEB7220 /* CodexSubagentHistoryTests.swift */,
+				99B3A7A972028C86BB202E19 /* ChatGPTWebProfileTests.swift */,
 				AB6140DDC49CD291389DCA2C /* CodexComposerDraftTests.swift */,
 				C413D1453E79E4D15CF51668 /* OfficialRequestTests.swift */,
 				88684CD3A248E617D47FE9C7 /* OfficialProtocolTests.swift */,
@@ -357,6 +393,14 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 				files = (
+				66A03730BEE140DEE4A6C9E2 /* CodexWorktreesView.swift in Sources */,
+				EB6ABAE41EC0FD014FFA73B1 /* CodexWorkspaceTools.swift in Sources */,
+				582F04AC858399FB5B579E8B /* CodexWorkspaceFilesView.swift in Sources */,
+				99CF6F417552A38552176151 /* CodexSubagentHistoryModel.swift in Sources */,
+				3DD468BA7118FE01A394813A /* CodexAgentMessageCard.swift in Sources */,
+				8B8A4B4D66CACB1A4467FA59 /* CodexAgentHistoryItem.swift in Sources */,
+				2195883221A9B3E689A80896 /* AppServerWorkspaceTools.swift in Sources */,
+				6BCD7BF721265EB26C239D1B /* ChatGPTWebProfiles.swift in Sources */,
 				F03B9E907DAED01B6CB8BB7B /* CodexComposerDraftStore.swift in Sources */,
 				59EA576EAB3FA1BDA8D45201 /* CodexThreadDetailsView.swift in Sources */,
 				DE00C395547EFD5EA589C568 /* CodexThreadControlsView.swift in Sources */,
@@ -403,6 +447,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3EB807568141B58E92DCBC8C /* CodexWorkspaceToolsTests.swift in Sources */,
+				9F1B7C2F8E3CD82D2ADC31E1 /* HostConfigurationTests.swift in Sources */,
+				4F4C13E1B60015DAC61E8FB1 /* CodexSubagentHistoryTests.swift in Sources */,
+				B40BC4677DDFFD4EB12EC23F /* ChatGPTWebProfileTests.swift in Sources */,
 				5A1405C7A70AC947AA780F1E /* CodexComposerDraftTests.swift in Sources */,
 				D39E156717F2514BEBC2117B /* OfficialRequestTests.swift in Sources */,
 				1144FAEF59E9152FAE7AFF8D /* OfficialProtocolTests.swift in Sources */,
