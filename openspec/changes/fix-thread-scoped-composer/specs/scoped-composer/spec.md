@@ -4,7 +4,7 @@
 
 ### Requirement: Drafts belong to a host, workspace, and thread
 
-The application MUST keep separate in-memory drafts for each host/workspace/thread scope, including a separate new-thread scope. Text and selected context tokens MUST be restored together. App navigation and tab switching MUST preserve drafts for the lifetime of AppState.
+The application SHALL keep separate in-memory drafts for each host/workspace/thread scope, including a separate new-thread scope. Text and selected context tokens SHALL be restored together. App navigation and tab switching SHALL preserve drafts for the lifetime of AppState.
 
 #### Scenario: Switching between existing threads
 - **GIVEN** thread A has unsent text and selected context tokens
@@ -23,7 +23,7 @@ The application MUST keep separate in-memory drafts for each host/workspace/thre
 
 ### Requirement: Submission routing is immutable across suspension
 
-The client MUST capture its target host, workspace, thread, prompt, context tokens, model, reasoning, and collaboration mode before awaiting connection or an RPC. A later selection change MUST NOT redirect the request or be reversed by its completion.
+The client SHALL capture its target host, workspace, thread, prompt, context tokens, model, reasoning, and collaboration mode before awaiting connection or an RPC. A later selection change SHALL NOT redirect the request or be reversed by its completion.
 
 #### Scenario: Thread changes during connection
 - **GIVEN** a prompt was submitted for A while the client is reconnecting
@@ -47,7 +47,7 @@ The client MUST capture its target host, workspace, thread, prompt, context toke
 
 ### Requirement: Failure recovery preserves scope and newer input
 
-A failed request MUST retain its original text and context tokens in the originating scope. Recovery MUST NOT overwrite newer input or populate a different thread's composer. Pending submissions MUST NOT be silently replayed.
+A failed request SHALL retain its original text and context tokens in the originating scope. Recovery SHALL NOT overwrite newer input or populate a different thread's composer. Pending submissions SHALL NOT be silently replayed.
 
 #### Scenario: Failure after switching threads
 - **GIVEN** a request for A is pending and B is now selected
