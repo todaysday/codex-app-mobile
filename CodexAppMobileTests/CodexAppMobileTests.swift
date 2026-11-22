@@ -116,7 +116,7 @@ final class CodexAppMobileTests: XCTestCase {
         XCTAssertEqual(store.hosts[0].preferredTransport, .ssh)
     }
 
-    func testRemoteHostDefaultsToSSHTransport() {
+    func testNewHostDraftDefaultsToAppServerButLegacyHostStillUsesSSH() {
         let host = RemoteHost(
             name: "Host A",
             host: "a.example.com",
@@ -126,7 +126,7 @@ final class CodexAppMobileTests: XCTestCase {
         )
 
         XCTAssertEqual(host.preferredTransport, .ssh)
-        XCTAssertEqual(RemoteHostDraft.empty.preferredTransport, .ssh)
+        XCTAssertEqual(RemoteHostDraft.empty.preferredTransport, .appServerWS)
     }
 
     func testRemoteHostDecodeLegacyPayloadDefaultsTransportToSSH() throws {

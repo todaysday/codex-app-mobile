@@ -416,31 +416,37 @@ final class ChatGPTWebProfiles: ObservableObject {
         defer { isRemovingProfile = false }
         managementError = nil
 
-        let model = model(for: id)
-        await model.clearWebsiteData()
-        guard !model.isClearing, model.failure == nil, model.webView == nil else {
+        // Unmount the target before stopping its WebView. The old WebKit store
+        // cannot be deleted while a view using it is still retained.
+        if selectedID == id, let replacement = profiles.first(where: { $0.id != id }) {
+            _ = model(for: replacement.id)
+            selectedID = replacement.id
+            defaults.set(replacement.id.uuidString, forKey: Self.selectionKey)
+        }
+        guard await stopAndClearProfileForDeletion(id: id) else {
             managementError = "Could not stop the profile page. Its data was not deleted; try again."
             return false
         }
 
-        // Unmount a selected profile and release its browser before WebKit removes
-        // its named data store. All other models and stores remain untouched.
-        if selectedID == id, let replacement = profiles.first(where: { $0.id != id }) {
-            selectedID = replacement.id
-            _ = self.model(for: replacement.id)
-            defaults.set(replacement.id.uuidString, forKey: Self.selectionKey)
-        }
+        // Crucially, the clearing helper has returned: it no longer retains the
+        // WKWebsiteDataStore through a local model variable while removal runs.
         models.removeValue(forKey: id)
         await Task.yield()
         do {
             try await WKWebsiteDataStore.remove(forIdentifier: id)
         } catch {
-            managementError = "The page data was cleared, but WebKit could not remove this profile's storage. Try deleting it again."
+            managementError = "The page data was cleared, but WebKit could not remove this profile's storage (code \((error as NSError).code)). Try again."
             return false
         }
         profiles.removeAll(where: { $0.id == id })
         persist()
         return true
+    }
+
+    private func stopAndClearProfileForDeletion(id: UUID) async -> Bool {
+        let target = model(for: id)
+        await target.clearWebsiteData()
+        return !target.isClearing && target.failure == nil && target.webView == nil
     }
 
     private func persist() {
