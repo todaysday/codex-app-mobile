@@ -8,10 +8,10 @@ Run this against one identified IPA. Do not put passwords, service tokens, cooki
 
 | Field | Value |
 | --- | --- |
-| Source commit | `0a1f8b107324faed81acd7ca76858b7bd97c7c8a` |
-| GitHub Actions run URL | [Successful run #6](https://github.com/todaysday/codex-app-mobile/actions/runs/45036419930) |
-| IPA SHA-256 | `ad1f6f51734c3497f107c5daae46c2675a065add9f66f5adc0ad4eb3973b5673` |
-| App version/build and bundle ID | 1.0 (6); `dev.todaysday.codexmobile`; arm64; minimum iOS 18.0 |
+| Source commit | `805ebe270b65f85e641a725158ad6caec881c94f` |
+| GitHub Actions run URL | [Successful run #17](https://github.com/todaysday/codex-app-mobile/actions/runs/45049173299) |
+| IPA SHA-256 | `69963248e84252ab92c5f7f522bd4025b1b948326c7044096c355c52e36eef1c` |
+| App version/build and bundle ID | 1.0 (17); `dev.todaysday.codexmobile`; arm64; minimum iOS 18.0 |
 | iPhone model | Pending |
 | iOS version | First requested target: 18.7.8; actual version pending |
 | SideStore version and installation method | Pending |
@@ -88,7 +88,7 @@ These checks apply to the review-fix build, including the user's clarification t
 
 | ID | Action | Expected result | Status / evidence |
 | --- | --- | --- | --- |
-| R01 | Upgrade from the original single-profile build, open ChatGPT, then add two or more named profiles from Settings. | The original still-valid login remains in the first profile. Add Profile creates independent empty profiles without a two-profile limit. | Pending |
+| R01 | Upgrade from the original single-profile build, open ChatGPT, then add two or more named profiles from Settings. | The original still-valid login remains in the first profile. Add Web Account creates independent empty profiles without a two-profile limit. | Pending |
 | R02 | Sign into the intended distinct ChatGPT accounts in separate profiles; switch among at least three profiles, including one signed-out profile. | Each profile shows only its own website account/history and keeps its own browser state; labels do not pretend to verify identity. | Pending |
 | R03 | Rename a profile, select another, terminate and relaunch. | Names, selection, and each still-valid website session persist independently. | Pending |
 | R04 | Cancel then confirm clearing one profile. Delete another profile after checking the confirmation names it. | Cancel changes nothing. Confirmed clear/delete affects only that profile; other web profiles and Codex credentials remain usable. The last profile is retained and can be cleared. | Pending |

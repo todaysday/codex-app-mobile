@@ -22,7 +22,7 @@ The baseline is official stable [Codex 0.171.0](https://github.com/openai/codex/
 | File previews | Workspace browser; text/code, image and PDF previews up to 2 MiB; official full-file RPC with size/type checks | [Workspace tasks](../openspec/changes/add-workspace-files-and-worktrees/tasks.md) |
 | Worktrees | List, create a new branch/worktree, open as a project, confirmed removal of an eligible clean worktree through Git argv over `command/exec` | [Workspace tasks](../openspec/changes/add-workspace-files-and-worktrees/tasks.md) |
 
-These controls have native UI and protocol implementations. [Verification](VERIFICATION.md) records the last completed hosted run; the current review fixes require a new run before their IPA is considered verified. The linked checklists retain separate live-server and physical-device acceptance gates. [Thread-scoped drafts](../openspec/changes/fix-thread-scoped-composer/proposal.md) preserve input and immutable submission targets across navigation and reconnects.
+These controls have native UI and protocol implementations. [CI #17](https://github.com/todaysday/codex-app-mobile/actions/runs/45049173299) passed 264 XCTest cases and the unsigned iPhoneOS Release build; the downloaded IPA and its provenance were verified. [Verification](VERIFICATION.md) records the exact source, artifact, checksums, and test groups. The linked checklists retain separate live-server and physical-device acceptance gates. [Thread-scoped drafts](../openspec/changes/fix-thread-scoped-composer/proposal.md) preserve input and immutable submission targets across navigation and reconnects.
 
 ## Remaining scope
 

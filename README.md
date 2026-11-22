@@ -4,7 +4,7 @@ A standalone SwiftUI iPhone app for your **existing Codex App Server**, with a s
 
 This project extends [shuto-S/codex-app-mobile](https://github.com/shuto-S/codex-app-mobile), preserving its Codex interface and SSH fallback. [Akuma1tko/ChatGPT-WebView](https://github.com/Akuma1tko/ChatGPT-WebView) is the minimal web-companion reference. Exact source revisions and reuse decisions are in [UPSTREAM.md](docs/UPSTREAM.md).
 
-**Delivery status:** the previous verified baseline is [macOS CI #6](https://github.com/todaysday/codex-app-mobile/actions/runs/45036419930), with 196 XCTest cases and an unsigned IPA. The additional named web profiles, rich subagent cards, WSS-only hosts, file previews, and worktrees in the current source require a new complete CI run. [Verification record](docs/VERIFICATION.md); [physical-device acceptance remains pending](docs/DEVICE_ACCEPTANCE.md).
+**Delivery status:** [macOS CI #17](https://github.com/todaysday/codex-app-mobile/actions/runs/45049173299) passed with 264 XCTest cases and 8 Python tooling tests, followed by an unsigned iPhoneOS Release build. The verified IPA includes named web profiles, rich subagent cards, WSS-only hosts, file previews, and worktrees. [Download the build artifact](https://github.com/todaysday/codex-app-mobile/actions/runs/45049173299/artifacts/14764364090); [verification record](docs/VERIFICATION.md). [Physical-device acceptance remains pending](docs/DEVICE_ACCEPTANCE.md).
 
 ## What is included
 
