@@ -1,10 +1,10 @@
 # Fix independent web profiles and incomplete remote inspection
 
 ## Why
-A single ChatGPT WebKit profile cannot safely preserve two simultaneously signed-in web accounts. Its Clear command removes the only profile. The current child-agent reader renders flattened transcript text, WSS Host setup requires unrelated SSH fields, and workspace file/worktree inspection is incomplete.
+A single ChatGPT WebKit profile cannot safely preserve multiple simultaneously signed-in web accounts. Its Clear command removes the only profile. The current child-agent reader renders flattened transcript text, WSS Host setup requires unrelated SSH fields, and workspace file/worktree inspection is incomplete.
 
 ## What changes
-- Two switchable, stable, independent persistent ChatGPT web profiles (A and B). Keep existing profile data in A without migration or forced logout; B starts empty. Clear affects only the selected profile.
+- A user-managed, expandable set of named persistent ChatGPT Web profiles (not a fixed pair). Preserve the existing WebKit store as the initial default. Users explicitly add further profiles in Settings, rename, switch and delete them with confirmation. Clear and removal affect only the targeted profile.
 - Structured read-only subagent conversation with distinct user, assistant, plan, reasoning, command/tool, file-change and unknown-event cards.
 - WSS-only Host setup with SSH disabled by default unless explicitly configured; optional SSH fallback remains for existing profiles.
 - Read-only workspace browser and bounded file preview using verified official App Server filesystem methods; worktree discovery through configured SSH only unless a real App Server worktree method is verified.

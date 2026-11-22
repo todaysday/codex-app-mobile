@@ -1,35 +1,50 @@
 ## ADDED Requirements
 
-### Requirement: Two independently persistent ChatGPT Web profiles
-The app SHALL expose two named web profiles and keep each profile in its own stable, persistent WKWebsiteDataStore and retained WKWebView. Profile A SHALL reuse the existing deployed store UUID.
+### Requirement: User-managed expandable ChatGPT Web profiles
+The app SHALL start with one persistent default ChatGPT Web profile and SHALL allow the user to explicitly add any number of further named profiles in Settings. It SHALL offer selection and rename for every profile, and confirmed deletion except for the last remaining profile. Each profile SHALL have a distinct stable persistent WKWebsiteDataStore identifier and retained WebView, with no shared cookies. The default profile SHALL preserve the deployed original UUID.
 
-#### Scenario: Login data in both profiles
-GIVEN each profile has a cookie with the same domain/name but different values
-WHEN the user switches A → B → A and the app re-creates its profile controllers
-THEN each profile retains only its own value and page state, and neither switch signs the other out.
+#### Scenario: Explicitly create four profiles
+GIVEN a fresh installation with one default profile
+WHEN the user taps Add Profile in Settings three times and names the new profiles
+THEN four independently selectable profiles exist; no second profile appears without an explicit Add action.
 
-#### Scenario: Switching without network or a new login
-GIVEN two prepared WebViews
-WHEN a profile is selected
-THEN selection changes the displayed instance without clearing data, sharing authentication, or automatically logging out either profile.
+#### Scenario: Names and selection persist
+GIVEN four profiles with independent names and one selected
+WHEN the app terminates and relaunches
+THEN the profile list, names, selected ID, and each named WebKit store identity remain stable.
 
-### Requirement: Clear only the chosen profile
-The app SHALL require confirmation naming the selected profile, stop its active documents and downloads, and delete data only from that profile's persistent store.
+#### Scenario: Switch without logout
+GIVEN three prepared WebViews with separate cookies for the same website
+WHEN the user switches A → C → B → A
+THEN each original WebView and website session is retained and no profile triggers a login/logout, data clear or navigation in any other profile.
 
-#### Scenario: Clear profile A
-GIVEN A and B are signed in separately
-WHEN A's data is explicitly cleared
-THEN B's cookies and WebView state remain intact, and Codex / Safari / the official ChatGPT app remain separate.
+### Requirement: Scoped web data clear and profile deletion
+The app SHALL capture the intended profile at confirmation, clear only that profile's website data, and never clear another profile, Codex, Safari or the official ChatGPT app. Deleting a profile SHALL also remove its indexed metadata and its named WebKit store only after its WebViews are released. The last remaining profile SHALL be undeletable but clearable.
 
-#### Scenario: Cancel clear
-GIVEN the clear dialog is open
-WHEN the user cancels or switches away
-THEN no profile data is removed.
+#### Scenario: Clear selected profile C
+GIVEN profiles A, B and C have separate saved session cookies
+WHEN the user confirms clearing C
+THEN only C's cookies are removed and A and B remain unaffected.
 
-### Requirement: Honest two-login acceptance
-The app SHALL not present independent cookies as proof that real OAuth and simultaneous signed-in web access work.
+#### Scenario: Target remains stable during confirmation
+GIVEN the user opens confirmation to delete profile B
+WHEN the displayed profile changes to C before confirmation resolves
+THEN only the captured B can be deleted; C's data cannot be cleared as a side effect.
 
-#### Scenario: Two real accounts
-GIVEN an iPhone with two valid ChatGPT accounts
-WHEN the user logs into A and B using their real providers, relaunches the app and switches
-THEN both accounts must remain independently accessible before real dual-login acceptance passes.
+#### Scenario: Failed storage removal
+GIVEN WebKit cannot release a profile's data store
+WHEN deletion fails
+THEN the app shows an error and retains the profile metadata rather than claiming it was removed.
+
+#### Scenario: Cancel or last profile
+GIVEN the user cancels deletion or attempts to delete the last profile
+WHEN no confirmed eligible deletion occurs
+THEN the last profile and all associated data remain unchanged.
+
+### Requirement: Honest multi-account acceptance
+The app SHALL not present cookie fixtures as proof of real ChatGPT OAuth. Actual independent sign-in and paid web features on iPhone SHALL be checked against the required number of accounts.
+
+#### Scenario: Three real web accounts
+GIVEN an iPhone with three separate ChatGPT accounts
+WHEN the user signs into each profile via their real login method, relaunches and switches profiles
+THEN all three accounts must remain independently usable before multi-account acceptance passes.

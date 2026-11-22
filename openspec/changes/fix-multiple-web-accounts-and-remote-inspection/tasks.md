@@ -1,10 +1,10 @@
 - [x] Inspect the current code, existing tests and pinned official 0.171.0 filesystem contracts.
-- [x] Write OpenSpec for dual web profiles, structured child transcript, WSS-only Hosts, remote files/worktrees.
-- [ ] Implement two retained persistent web profiles, switching, selected-only clear, and isolation tests.
+- [x] Write OpenSpec for expandable user-managed web profiles, structured child transcript, WSS-only Hosts, remote files/worktrees.
+- [ ] Implement an arbitrary number of explicitly added, renamed and deletable persistent web profiles, switching, targeted clear, and isolation tests across at least three profiles.
 - [ ] Refactor Host editor and validation to make SSH optional for App Server-only transport and guard SSH-only actions.
 - [ ] Render typed subagent message/action cards instead of the flattened transcript; test mixed item types.
 - [ ] Add bounded read-only workspace file exploration using official methods and honest feature failures.
 - [ ] Add read-only worktree inspection where actual SSH is configured; do not invent App Server RPC.
-- [ ] Update instructions and device acceptance for switching two real web accounts.
+- [ ] Update instructions and device acceptance for adding and switching multiple real web accounts.
 - [ ] Run Swift/XCTest CI and package an unsigned IPA for the implementation commit.
-- [ ] Verify two real web logins, optional SSH behavior and remote filesystem live against the user's actual VPS/iPhone.
+- [ ] Verify at least three real web logins, optional SSH behavior and remote filesystem live against the user's actual VPS/iPhone.
