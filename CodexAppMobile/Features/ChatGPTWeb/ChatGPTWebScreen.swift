@@ -159,7 +159,9 @@ struct ChatGPTSafariView: UIViewControllerRepresentable {
     final class Coordinator: NSObject, SFSafariViewControllerDelegate {
         let dismiss: () -> Void
         init(dismiss: @escaping () -> Void) { self.dismiss = dismiss }
-        func safariViewControllerDidFinish(_ controller: SFSafariViewController) { dismiss() }
+        nonisolated func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
+            Task { @MainActor [weak self] in self?.dismiss() }
+        }
     }
 }
 
