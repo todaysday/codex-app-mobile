@@ -312,31 +312,32 @@ final class ChatGPTWebProfiles: ObservableObject {
     init(defaults: UserDefaults = .standard, first: ChatGPTWebViewModel? = nil) {
         self.defaults = defaults
 
+        let loadedProfiles: [Profile]
         if let data = defaults.data(forKey: Self.profilesKey),
            let stored = try? JSONDecoder().decode([Profile].self, from: data),
            !stored.isEmpty,
            Set(stored.map(\.id)).count == stored.count,
            stored.allSatisfy({ !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
-            profiles = stored
-        } else if let oldSelection = defaults.string(forKey: Self.legacySelectionKey) {
-            // A pre-release two-profile installation may have WebKit data in the
-            // earlier fixed secondary ID. Retain both only when that version ran.
-            profiles = [
+            loadedProfiles = stored
+        } else if defaults.string(forKey: Self.legacySelectionKey) != nil {
+            // Preserve existing pre-release Web 2 cookies only when that
+            // experimental two-profile build has actually been installed.
+            loadedProfiles = [
                 Self.defaultProfile,
                 Profile(id: ChatGPTWebPolicy.secondaryStoreIdentifier, name: "Web 2")
             ]
-            selectedID = oldSelection == "second"
-                ? ChatGPTWebPolicy.secondaryStoreIdentifier : ChatGPTWebPolicy.storeIdentifier
         } else {
-            profiles = [Self.defaultProfile]
+            loadedProfiles = [Self.defaultProfile]
         }
+        profiles = loadedProfiles
 
         let requested = UUID(uuidString: defaults.string(forKey: Self.selectionKey) ?? "")
+        let legacySecond = defaults.string(forKey: Self.legacySelectionKey) == "second"
         selectedID = requested.flatMap { id in
-            profiles.contains(where: { $0.id == id }) ? id : nil
-        } ?? (defaults.string(forKey: Self.legacySelectionKey) == "second"
-              && profiles.contains(where: { $0.id == ChatGPTWebPolicy.secondaryStoreIdentifier })
-              ? ChatGPTWebPolicy.secondaryStoreIdentifier : profiles[0].id)
+            loadedProfiles.contains(where: { $0.id == id }) ? id : nil
+        } ?? (legacySecond
+              && loadedProfiles.contains(where: { $0.id == ChatGPTWebPolicy.secondaryStoreIdentifier })
+              ? ChatGPTWebPolicy.secondaryStoreIdentifier : loadedProfiles[0].id)
 
         if let first, profiles.contains(where: { $0.id == Self.defaultProfile.id }) {
             models[Self.defaultProfile.id] = first
