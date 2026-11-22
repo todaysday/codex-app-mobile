@@ -125,7 +125,7 @@ struct CodexAppMobileApp: App {
 }
 
 private struct AppRootView: View {
-    @StateObject private var chatGPT = ChatGPTWebViewModel()
+    @StateObject private var chatGPT = ChatGPTWebProfiles()
     @State private var isShowingSplash = true
     @State private var iconScale: CGFloat = 0.84
     @State private var iconOpacity = 0.0

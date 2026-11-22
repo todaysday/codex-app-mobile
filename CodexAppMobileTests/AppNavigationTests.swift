@@ -52,7 +52,9 @@ final class AppNavigationTests: XCTestCase {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previousKeyWindow = scene.windows.first(where: \.isKeyWindow)
         let window = UIWindow(windowScene: scene)
-        window.rootViewController = UIHostingController(rootView: AppShellView(chatGPT: browser)
+        let profiles = ChatGPTWebProfiles(defaults: defaults, first: browser,
+                                          second: ChatGPTWebViewModel(storeIdentifier: UUID()))
+        window.rootViewController = UIHostingController(rootView: AppShellView(chatGPT: profiles)
             .environmentObject(state).environmentObject(navigation))
         window.makeKeyAndVisible()
         defer {

@@ -3,6 +3,60 @@ import WebKit
 @testable import CodexAppMobile
 
 final class ChatGPTWebTests: XCTestCase {
+    @MainActor
+    func testTwoProfileSwitchKeepsDistinctWebViewsAndSelectionAcrossLaunch() throws {
+        let suite = "ChatGPTWebProfiles.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let first = ChatGPTWebViewModel(storeIdentifier: UUID(), initialURL: URL(string: "about:blank")!)
+        let second = ChatGPTWebViewModel(storeIdentifier: UUID(), initialURL: URL(string: "about:blank")!)
+        let profiles = ChatGPTWebProfiles(defaults: defaults, first: first, second: second)
+        XCTAssertEqual(profiles.selected, .first)
+        let firstView = first.prepareWebView()
+        let secondView = second.prepareWebView()
+        XCTAssertFalse(firstView === secondView)
+        XCTAssertFalse(firstView.configuration.websiteDataStore === secondView.configuration.websiteDataStore)
+        profiles.select(.second)
+        XCTAssertTrue(profiles.active === second)
+        XCTAssertTrue(profiles.active.webView === secondView)
+        XCTAssertNil(firstView.url)
+        profiles.select(.first)
+        XCTAssertTrue(profiles.active.webView === firstView)
+        let relaunched = ChatGPTWebProfiles(defaults: defaults, first: first, second: second)
+        XCTAssertEqual(relaunched.selected, .first)
+        profiles.select(.second)
+        XCTAssertEqual(ChatGPTWebProfiles(defaults: defaults, first: first, second: second).selected, .second)
+    }
+
+    @MainActor
+    func testTwoProfilesRetainDistinctSessionsAndScopedResetAcrossRestart() async throws {
+        let firstID = UUID(), secondID = UUID()
+        let first = ChatGPTWebViewModel(storeIdentifier: firstID)
+        let second = ChatGPTWebViewModel(storeIdentifier: secondID)
+        let firstCookie = try XCTUnwrap(HTTPCookie(properties: [
+            .domain: "chatgpt.com", .path: "/", .name: "session-test", .value: "web-account-a",
+            .secure: "TRUE", .expires: Date().addingTimeInterval(600)
+        ]))
+        let secondCookie = try XCTUnwrap(HTTPCookie(properties: [
+            .domain: "chatgpt.com", .path: "/", .name: "session-test", .value: "web-account-b",
+            .secure: "TRUE", .expires: Date().addingTimeInterval(600)
+        ]))
+        await first.dataStore.httpCookieStore.setCookie(firstCookie)
+        await second.dataStore.httpCookieStore.setCookie(secondCookie)
+        let reconstructedA = ChatGPTWebViewModel(storeIdentifier: firstID)
+        let reconstructedB = ChatGPTWebViewModel(storeIdentifier: secondID)
+        let cookiesA = await reconstructedA.dataStore.httpCookieStore.allCookies()
+        let cookiesB = await reconstructedB.dataStore.httpCookieStore.allCookies()
+        XCTAssertEqual(cookiesA.first(where: { $0.name == "session-test" })?.value, "web-account-a")
+        XCTAssertEqual(cookiesB.first(where: { $0.name == "session-test" })?.value, "web-account-b")
+        await first.clearWebsiteData()
+        let clearedA = await reconstructedA.dataStore.httpCookieStore.allCookies()
+        let retainedB = await reconstructedB.dataStore.httpCookieStore.allCookies()
+        XCTAssertFalse(clearedA.contains(where: { $0.name == "session-test" }))
+        XCTAssertEqual(retainedB.first(where: { $0.name == "session-test" })?.value, "web-account-b")
+        await second.clearWebsiteData()
+    }
+
     func testNavigationAllowsOfficialSitesAndAuthenticationProviders() {
         for address in [
             "https://chatgpt.com/c/test", "https://auth.openai.com/login",

@@ -2,26 +2,33 @@ import SwiftUI
 
 struct ChatGPTWebSettingsView: View {
     @ObservedObject var model: ChatGPTWebViewModel
+    @ObservedObject var profiles: ChatGPTWebProfiles
     @State private var confirmsClear = false
     @State private var showsBrowser = false
 
-    static let signInHelp = "This browser has its own ChatGPT account, independent of Codex and the official ChatGPT app. Some providers, including Google, may block sign-in inside an embedded browser. Try your usual sign-in method; if it is blocked, use Open in Browser. Signing in there does not sign in this embedded view. Pro features depend on your account and the website."
+    static let signInHelp = "Web 1 and Web 2 have independent persistent browser sessions. Neither shares Codex or the official ChatGPT app. Some providers, including Google, may block sign-in inside an embedded browser. Try your usual sign-in method; if it is blocked, use Open in Browser. Signing in there does not sign in this embedded view. Pro features depend on your account and the website."
 
     var body: some View {
         Form {
             Section("Independent Accounts") {
+                Picker("Active web profile", selection: Binding(
+                    get: { profiles.selected }, set: { profiles.select($0) }
+                )) {
+                    ForEach(ChatGPTWebProfiles.Slot.allCases) { slot in Text(slot.title).tag(slot) }
+                }
                 Text(Self.signInHelp).font(.subheadline)
                 Button("Open ChatGPT in Browser", systemImage: "safari") { showsBrowser = true }
                     .disabled(model.isClearing)
             }
             Section("ChatGPT Web Data") {
-                Text("Sign-in data is stored on this device in a dedicated persistent browser profile.")
+                Text("Each web profile has its own persistent cookies and website data. Clearing one does not erase the other.")
                     .font(.subheadline).foregroundStyle(.secondary)
-                Button("Clear ChatGPT Web Data", systemImage: "trash", role: .destructive) { confirmsClear = true }
+                Button("Clear \(profiles.selected.title) Web Data", systemImage: "trash", role: .destructive) { confirmsClear = true }
                     .disabled(model.isClearing)
                 if model.isClearing { ProgressView("Clearing web data…") }
             }
             Section("Diagnostics") {
+                LabeledContent("Profile", value: profiles.selected.title)
                 LabeledContent("Website", value: model.currentHost)
                 LabeledContent("Storage", value: "Persistent, isolated profile")
                 LabeledContent("Page", value: model.isLoading ? "Loading" : "Idle")
@@ -35,11 +42,14 @@ struct ChatGPTWebSettingsView: View {
         }
         .navigationTitle("ChatGPT Web")
         .navigationBarTitleDisplayMode(.inline)
-        .confirmationDialog("Clear ChatGPT web data?", isPresented: $confirmsClear, titleVisibility: .visible) {
-            Button("Clear Web Data", role: .destructive) { Task { await model.clearWebsiteData() } }
+        .confirmationDialog("Clear \(profiles.selected.title) web data?", isPresented: $confirmsClear, titleVisibility: .visible) {
+            Button("Clear \(profiles.selected.title) Data", role: .destructive) {
+                let selectedModel = model
+                Task { await selectedModel.clearWebsiteData() }
+            }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This signs out only the embedded ChatGPT browser and removes its website data and temporary downloads. Codex, Safari and the official ChatGPT app are unaffected.")
+            Text("Only \(profiles.selected.title) is cleared. The other web profile, Codex, Safari and the official ChatGPT app retain their local data.")
         }
         .sheet(isPresented: $showsBrowser) { ChatGPTSafariView(url: ChatGPTWebPolicy.homeURL).ignoresSafeArea() }
     }

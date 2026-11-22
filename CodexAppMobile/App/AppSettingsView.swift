@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AppSettingsView: View {
-    @ObservedObject var chatGPT: ChatGPTWebViewModel
+    @ObservedObject var chatGPT: ChatGPTWebProfiles
     let openCodex: () -> Void
 
     var body: some View {
@@ -15,11 +15,12 @@ struct AppSettingsView: View {
             }
             Section("ChatGPT") {
                 NavigationLink {
-                    ChatGPTWebSettingsView(model: chatGPT)
+                    ChatGPTWebSettingsView(model: chatGPT.active, profiles: chatGPT)
+                        .id(chatGPT.selected)
                 } label: {
                     Label("Web Account and Browser Data", systemImage: "globe")
                 }
-                Text("The embedded ChatGPT account is independent of your Codex server account.")
+                Text("Web 1 and Web 2 have separate persistent sign-ins; neither shares Codex or the official ChatGPT app.")
                     .font(.subheadline).foregroundStyle(.secondary)
             }
             Section("About") {

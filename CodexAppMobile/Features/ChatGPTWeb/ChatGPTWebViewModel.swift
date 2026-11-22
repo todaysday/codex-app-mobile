@@ -285,3 +285,43 @@ enum ChatGPTWebSheet: Identifiable {
         }
     }
 }
+
+
+// The two user-selectable website profiles deliberately have no shared cookie store.
+// Only the profile selection is saved in preferences; auth cookies stay in WebKit.
+@MainActor
+final class ChatGPTWebProfiles: ObservableObject {
+    enum Slot: String, CaseIterable, Identifiable {
+        case first, second
+        var id: String { rawValue }
+        var title: String { self == .first ? "Web 1" : "Web 2" }
+    }
+
+    @Published private(set) var selected: Slot
+    let first: ChatGPTWebViewModel
+    let second: ChatGPTWebViewModel
+    private let defaults: UserDefaults
+    private let selectionKey = "chatgpt.web.selectedProfile.v1"
+
+    init(defaults: UserDefaults = .standard,
+         first: ChatGPTWebViewModel? = nil,
+         second: ChatGPTWebViewModel? = nil) {
+        self.defaults = defaults
+        self.first = first ?? ChatGPTWebViewModel(storeIdentifier: ChatGPTWebPolicy.storeIdentifier)
+        self.second = second ?? ChatGPTWebViewModel(storeIdentifier: ChatGPTWebPolicy.secondaryStoreIdentifier)
+        selected = Slot(rawValue: defaults.string(forKey: selectionKey) ?? "") ?? .first
+    }
+
+    var active: ChatGPTWebViewModel { model(for: selected) }
+
+    func model(for slot: Slot) -> ChatGPTWebViewModel {
+        slot == .first ? first : second
+    }
+
+    func select(_ slot: Slot) {
+        guard selected != slot else { return }
+        selected = slot
+        defaults.set(slot.rawValue, forKey: selectionKey)
+        // No clearing, network navigation, or authentication action on selection.
+    }
+}

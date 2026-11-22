@@ -4,11 +4,22 @@ import WebKit
 
 struct ChatGPTWebScreen: View {
     @ObservedObject var model: ChatGPTWebViewModel
+    @ObservedObject var profiles: ChatGPTWebProfiles
     @State private var confirmsClear = false
     @State private var showsSignInHelp = false
 
     var body: some View {
         VStack(spacing: 0) {
+            Picker("ChatGPT web profile", selection: Binding(
+                get: { profiles.selected }, set: { profiles.select($0) }
+            )) {
+                ForEach(ChatGPTWebProfiles.Slot.allCases) { slot in
+                    Text(slot.title).tag(slot)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .padding(.vertical, 7)
             if model.isLoading {
                 ProgressView(value: model.progress).accessibilityLabel("Page loading")
             }
@@ -56,17 +67,20 @@ struct ChatGPTWebScreen: View {
                         Button("Share Download", systemImage: "square.and.arrow.up", action: model.presentReadyDownload)
                     }
                     Divider()
-                    Button("Clear ChatGPT Web Data", systemImage: "trash", role: .destructive) { confirmsClear = true }
+                    Button("Clear \(profiles.selected.title) Web Data", systemImage: "trash", role: .destructive) { confirmsClear = true }
                 } label: { Image(systemName: "ellipsis.circle") }
                 .accessibilityLabel("ChatGPT options").disabled(model.isClearing)
             }
         }
         .task(id: model.isClearing) { model.loadIfNeeded() }
-        .confirmationDialog("Clear ChatGPT web data?", isPresented: $confirmsClear, titleVisibility: .visible) {
-            Button("Clear Web Data", role: .destructive) { Task { await model.clearWebsiteData() } }
+        .confirmationDialog("Clear \(profiles.selected.title) web data?", isPresented: $confirmsClear, titleVisibility: .visible) {
+            Button("Clear \(profiles.selected.title) Data", role: .destructive) {
+                let selectedModel = model
+                Task { await selectedModel.clearWebsiteData() }
+            }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This signs out the embedded ChatGPT browser and removes its cookies, website data and temporary downloads. Codex, Safari and the official ChatGPT app keep their own accounts.")
+            Text("This clears only \(profiles.selected.title)'s embedded cookies, website data, and temporary downloads. The other web profile, Codex, Safari and the official ChatGPT app are not cleared.")
         }
         .alert("Signing in to ChatGPT", isPresented: $showsSignInHelp) {
             Button("Open in Browser", action: model.openBrowser)
