@@ -140,3 +140,62 @@ final class CodexOfficialUITests: XCTestCase {
         return condition()
     }
 }
+
+
+final class CodexSubagentCardTests: XCTestCase {
+    func testDistinctActionCardsRetainStatusAndOutput() {
+        let command = CodexSubagentCardInfo(item: .commandExecution(
+            id: "c", command: "swift test", status: "completed", output: "All tests passed"
+        ))
+        XCTAssertEqual(command.title, "Command")
+        XCTAssertEqual(command.status, "completed")
+        XCTAssertEqual(command.details, "All tests passed")
+
+        let tool = CodexSubagentCardInfo(item: .toolCall(
+            id: "mcp", tool: "github / search", status: "failed", details: "Error: unavailable"
+        ))
+        XCTAssertEqual(tool.title, "Tool · github / search")
+        XCTAssertEqual(tool.status, "failed")
+        XCTAssertEqual(tool.details, "Error: unavailable")
+
+        let action = CodexSubagentCardInfo(item: .agentAction(
+            id: "spawn", action: "spawnAgent", status: "inProgress", details: "Agents: child"
+        ))
+        XCTAssertEqual(action.title, "Agent action · spawnAgent")
+        XCTAssertEqual(action.status, "inProgress")
+        XCTAssertEqual(CodexSubagentCardInfo(item: .other(id: "new", type: "newItem")).title,
+                       "Other item · newItem")
+    }
+
+    @MainActor
+    func testProtocolDecodesOfficialMCPAndCollaborationItems() throws {
+        let json = """
+        {
+          "id":"child-thread","historyMode":"legacy",
+          "turns":[{
+            "id":"turn-1","status":"completed","items":[
+              {"id":"u","type":"userMessage","content":[{"type":"text","text":"inspect"}]},
+              {"id":"m","type":"mcpToolCall","server":"github","tool":"search",
+               "status":"completed","arguments":{"query":"code"},"result":{"ok":true}},
+              {"id":"a","type":"collabAgentToolCall","tool":"spawnAgent",
+               "status":"inProgress","receiverThreadIds":["child-2"],"prompt":"inspect"}
+            ]
+          }]
+        }
+        """
+        let decoded = try JSONDecoder().decode(ThreadReadThreadPayload.self, from: Data(json.utf8))
+        let detail = AppServerClient().convertThread(decoded)
+        XCTAssertEqual(detail.turns.count, 1)
+        XCTAssertEqual(detail.turns[0].items.count, 3)
+        guard case .toolCall(_, let name, let status, let details) = detail.turns[0].items[1] else {
+            return XCTFail("Expected typed MCP tool")
+        }
+        XCTAssertEqual(name, "github / search")
+        XCTAssertEqual(status, "completed")
+        XCTAssertTrue(details?.contains("query") == true)
+        guard case .agentAction(_, let tool, _, _) = detail.turns[0].items[2] else {
+            return XCTFail("Expected typed collaboration tool")
+        }
+        XCTAssertEqual(tool, "spawnAgent")
+    }
+}

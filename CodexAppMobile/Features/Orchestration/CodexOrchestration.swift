@@ -513,6 +513,8 @@ enum CodexTurnItem: Equatable, Identifiable {
     case reasoning(id: String, text: String)
     case commandExecution(id: String, command: String, status: String, output: String?)
     case fileChange(id: String, status: String, changedFiles: Int)
+    case toolCall(id: String, tool: String, status: String, details: String?)
+    case agentAction(id: String, action: String, status: String, details: String?)
     case other(id: String, type: String)
 
     var id: String {
@@ -523,6 +525,8 @@ enum CodexTurnItem: Equatable, Identifiable {
                 .reasoning(let id, _),
                 .commandExecution(let id, _, _, _),
                 .fileChange(let id, _, _),
+                .toolCall(let id, _, _, _),
+                .agentAction(let id, _, _, _),
                 .other(let id, _):
             return id
         }

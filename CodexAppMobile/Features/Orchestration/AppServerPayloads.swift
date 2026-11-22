@@ -415,6 +415,15 @@ struct ThreadReadItemPayload: Decodable {
     let changes: [ThreadReadFileChangePayload]?
     let content: [ThreadReadUserInputPayload]?
     let summary: [JSONValue]?
+    // Official item variants: MCP, dynamic tools and cross-agent actions.
+    let server: String?
+    let namespace: String?
+    let tool: String?
+    let arguments: JSONValue?
+    let result: JSONValue?
+    let error: JSONValue?
+    let prompt: String?
+    let receiverThreadIds: [String]?
 }
 
 struct ThreadReadFileChangePayload: Decodable {

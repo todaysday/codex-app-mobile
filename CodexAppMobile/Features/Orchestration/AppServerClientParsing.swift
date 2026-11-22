@@ -1068,6 +1068,17 @@ extension AppServerClient {
         return try JSONDecoder().decode(type, from: data)
     }
 
+    /// A limited, readable tool detail for native cards; no tool payloads are logged.
+    static func toolCardValue(_ value: JSONValue?) -> String? {
+        guard let value else { return nil }
+        let output: String?
+        if let string = value.stringValue { output = string }
+        else if let data = try? JSONEncoder().encode(value) { output = String(data: data, encoding: .utf8) }
+        else { output = nil }
+        guard let output else { return nil }
+        return output.count > 5000 ? String(output.prefix(5000)) + "… (truncated)" : output
+    }
+
     func convertThread(
         _ thread: ThreadReadThreadPayload,
         modelOverride: String? = nil,
@@ -1122,6 +1133,28 @@ extension AppServerClient {
                         changedFiles: item.changes?.count ?? 0
                     )
 
+                case "mcpToolCall", "dynamicToolCall":
+                    let tool = [item.server ?? item.namespace, item.tool]
+                        .compactMap { $0 }.joined(separator: " / ")
+                    let details = [
+                        Self.toolCardValue(item.arguments).map { "Arguments: " + $0 },
+                        Self.toolCardValue(item.error).map { "Error: " + $0 },
+                        Self.toolCardValue(item.result).map { "Result: " + $0 }
+                    ].compactMap { $0 }.joined(separator: "\n")
+                    return .toolCall(id: item.id, tool: tool.isEmpty ? item.type : tool,
+                                     status: item.status ?? "unknown",
+                                     details: details.isEmpty ? nil : details)
+
+                case "collabAgentToolCall", "collabToolCall", "subAgentActivity":
+                    let destinations = item.receiverThreadIds?.joined(separator: ", ")
+                    let details = [
+                        destinations.map { "Agents: " + $0 },
+                        item.prompt.map { "Prompt: " + String($0.prefix(3000)) }
+                    ].compactMap { $0 }.joined(separator: "\n")
+                    return .agentAction(id: item.id, action: item.tool ?? item.type,
+                                        status: item.status ?? "unknown",
+                                        details: details.isEmpty ? nil : details)
+
                 default:
                     return .other(id: item.id, type: item.type)
                 }
@@ -1173,6 +1206,10 @@ extension AppServerClient {
                     }
                 case .fileChange(_, let status, let changedFiles):
                     lines.append("File change [\(status)] files=\(changedFiles)")
+                case .toolCall(_, let tool, let status, _):
+                    lines.append("Tool: \(tool) [\(status)]")
+                case .agentAction(_, let action, let status, _):
+                    lines.append("Agent action: \(action) [\(status)]")
                 case .other(_, let type):
                     lines.append("Item: \(type)")
                 }

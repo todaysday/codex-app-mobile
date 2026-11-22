@@ -110,9 +110,9 @@ struct CodexSubagentThreadView: View {
     @State private var isLoading = false
     @State private var hasLoaded = false
     @State private var errorMessage: String?
+    @State private var detail: CodexThreadDetail?
 
     private var record: RemoteThreadRecord? { client.threadRecordsByID[threadID] ?? fallback }
-    private var transcript: String { client.transcriptByThread[threadID] ?? "" }
     private var children: [RemoteThreadRecord] {
         client.threadRecordsByID.values.filter { $0.parentThreadID == threadID && $0.id != threadID }
             .sorted { $0.updatedAt > $1.updatedAt }
@@ -142,12 +142,25 @@ struct CodexSubagentThreadView: View {
                     Button { openThread(child.id) } label: { CodexSubagentRow(record: child) }
                 }
             }
-            Section("Messages") {
-                if transcript.isEmpty {
+            Section("Messages and actions") {
+                if let detail, !detail.turns.isEmpty {
+                    ForEach(detail.turns) { turn in
+                        VStack(alignment: .leading, spacing: 9) {
+                            HStack {
+                                Text("Turn \(turn.id.prefix(8))").font(.caption.weight(.semibold))
+                                Spacer()
+                                Text(turn.status).font(.caption).foregroundStyle(.secondary)
+                            }
+                            ForEach(turn.items) { item in
+                                CodexSubagentItemCard(item: item)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 6)
+                    }
+                } else {
                     Text(hasLoaded ? "No messages were returned." : "Messages have not loaded yet.")
                         .foregroundStyle(.secondary)
-                } else {
-                    Text(transcript).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
@@ -170,8 +183,9 @@ struct CodexSubagentThreadView: View {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            _ = try await client.threadRead(threadID: threadID)
-            guard !Task.isCancelled else { return }
+            let loaded = try await client.threadRead(threadID: threadID)
+            guard !Task.isCancelled, loaded.threadID == threadID else { return }
+            detail = loaded
             hasLoaded = true
         } catch { errorMessage = client.userFacingMessage(for: error) }
     }
@@ -183,5 +197,87 @@ enum CodexSubagentNavigation {
         guard threadID != rootID else { return [] }
         if let index = current.firstIndex(of: threadID) { return Array(current.prefix(index + 1)) }
         return current + [threadID]
+    }
+}
+
+
+/// View-only projection: no request, turn or approval operation is attached to a card.
+struct CodexSubagentCardInfo: Equatable {
+    let title: String
+    let symbol: String
+    let summary: String?
+    let status: String?
+    let details: String?
+
+    init(item: CodexTurnItem) {
+        switch item {
+        case .userMessage(_, let text):
+            title = "User"; symbol = "person.fill"; summary = text; status = nil; details = nil
+        case .agentMessage(_, let text):
+            title = "Agent"; symbol = "bubble.left.fill"; summary = text; status = nil; details = nil
+        case .plan(_, let text):
+            title = "Plan"; symbol = "list.bullet.clipboard"; summary = text; status = nil; details = nil
+        case .reasoning(_, let text):
+            title = "Reasoning summary"; symbol = "brain.head.profile"
+            summary = text.isEmpty ? "No summary available." : text; status = nil; details = nil
+        case .commandExecution(_, let command, let state, let output):
+            title = "Command"; symbol = "terminal"; summary = command; status = state; details = output
+        case .fileChange(_, let state, let changedFiles):
+            title = "File changes"; symbol = "doc.badge.gearshape"
+            summary = "\(changedFiles) file(s) reported"; status = state; details = nil
+        case .toolCall(_, let tool, let state, let output):
+            title = "Tool · \(tool)"; symbol = "wrench.adjustable"
+            summary = nil; status = state; details = output
+        case .agentAction(_, let action, let state, let output):
+            title = "Agent action · \(action)"; symbol = "person.2"
+            summary = nil; status = state; details = output
+        case .other(_, let type):
+            title = "Other item · \(type)"; symbol = "square.stack.3d.up"
+            summary = "This item type is not fully represented by the mobile reader."
+            status = nil; details = nil
+        }
+    }
+}
+
+struct CodexSubagentItemCard: View {
+    let item: CodexTurnItem
+    @State private var detailsExpanded = false
+
+    private var info: CodexSubagentCardInfo { .init(item: item) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Label(info.title, systemImage: info.symbol)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(3)
+                Spacer(minLength: 6)
+                if let status = info.status {
+                    Text(status).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if let summary = info.summary, !summary.isEmpty {
+                Text(summary)
+                    .font(.subheadline)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let details = info.details, !details.isEmpty {
+                DisclosureGroup("Tool output and details", isExpanded: $detailsExpanded) {
+                    ScrollView(.horizontal) {
+                        Text(details)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.top, 6)
+                }
+                .font(.caption)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .contain)
     }
 }
