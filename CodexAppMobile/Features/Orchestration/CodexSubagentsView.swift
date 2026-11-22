@@ -194,11 +194,15 @@ struct CodexSubagentThreadView: View {
     @MainActor
     private func followVisibleThread() async {
         history.prepare(threadID: threadID, generation: client.connectionGeneration)
-        guard scenePhase == .active, client.state == .connected else {
+        guard client.state == .connected else {
             history.cancelRefresh()
             return
         }
+        // The first history read is needed even while a view is briefly
+        // inactive (e.g. navigation transition or iOS simulator mounting).
+        // Only the periodic polling loop requires an active foreground scene.
         await refresh()
+        guard scenePhase == .active else { return }
         while !Task.isCancelled {
             let wasActive = isActive
             do { try await Task.sleep(for: .seconds(4)) } catch { return }
