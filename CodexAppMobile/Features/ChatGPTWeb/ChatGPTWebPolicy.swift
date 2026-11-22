@@ -4,7 +4,7 @@ enum ChatGPTWebPolicy {
     static let homeURL = URL(string: "https://chatgpt.com")!
     // Keep this identifier stable across launches and releases.
     static let storeIdentifier = UUID(uuidString: "70E5ABF8-5C6B-4E75-A7F1-FF38825C26D3")!
-    // Independent from the deployed original store above.
+    // Migration-only: the pre-release fixed second profile might already hold cookies.
     static let secondaryStoreIdentifier = UUID(uuidString: "9B741BD4-7E46-4BA7-94A1-F339E33CB251")!
 
     enum Navigation: Equatable {

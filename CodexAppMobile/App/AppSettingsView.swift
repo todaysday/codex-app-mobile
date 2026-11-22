@@ -16,11 +16,11 @@ struct AppSettingsView: View {
             Section("ChatGPT") {
                 NavigationLink {
                     ChatGPTWebSettingsView(model: chatGPT.active, profiles: chatGPT)
-                        .id(chatGPT.selected)
+                        .id(chatGPT.selectedID)
                 } label: {
                     Label("Web Account and Browser Data", systemImage: "globe")
                 }
-                Text("Web 1 and Web 2 have separate persistent sign-ins; neither shares Codex or the official ChatGPT app.")
+                Text("Manage multiple independently signed-in web profiles under this menu. Codex and the official ChatGPT app retain their own sessions.")
                     .font(.subheadline).foregroundStyle(.secondary)
             }
             Section("About") {

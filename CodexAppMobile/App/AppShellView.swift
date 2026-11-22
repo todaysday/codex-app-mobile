@@ -29,7 +29,7 @@ struct AppShellView: View {
 
             NavigationStack {
                 ChatGPTWebScreen(model: chatGPT.active, profiles: chatGPT)
-                    .id(chatGPT.selected)
+                    .id(chatGPT.selectedID)
             }
             .tabItem { Label("ChatGPT", systemImage: "bubble.left.and.bubble.right") }
             .tag(AppTab.chatGPT)

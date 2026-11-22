@@ -287,41 +287,164 @@ enum ChatGPTWebSheet: Identifiable {
 }
 
 
-// The two user-selectable website profiles deliberately have no shared cookie store.
-// Only the profile selection is saved in preferences; auth cookies stay in WebKit.
+// Profile records contain only user-visible labels and stable WebKit identifiers.
+// Authentication data remains exclusively in the isolated named WKWebsiteDataStores.
 @MainActor
 final class ChatGPTWebProfiles: ObservableObject {
-    enum Slot: String, CaseIterable, Identifiable {
-        case first, second
-        var id: String { rawValue }
-        var title: String { self == .first ? "Web 1" : "Web 2" }
+    struct Profile: Codable, Equatable, Identifiable {
+        let id: UUID
+        var name: String
     }
 
-    @Published private(set) var selected: Slot
-    let first: ChatGPTWebViewModel
-    let second: ChatGPTWebViewModel
+    static let defaultProfile = Profile(id: ChatGPTWebPolicy.storeIdentifier, name: "Web 1")
+    private static let profilesKey = "chatgpt.web.profiles.v2"
+    private static let selectionKey = "chatgpt.web.selectedProfileID.v2"
+    private static let legacySelectionKey = "chatgpt.web.selectedProfile.v1"
+
+    @Published private(set) var profiles: [Profile]
+    @Published private(set) var selectedID: UUID
+    @Published private(set) var isRemovingProfile = false
+    @Published var managementError: String?
+
     private let defaults: UserDefaults
-    private let selectionKey = "chatgpt.web.selectedProfile.v1"
+    private var models: [UUID: ChatGPTWebViewModel] = [:]
 
-    init(defaults: UserDefaults = .standard,
-         first: ChatGPTWebViewModel? = nil,
-         second: ChatGPTWebViewModel? = nil) {
+    init(defaults: UserDefaults = .standard, first: ChatGPTWebViewModel? = nil) {
         self.defaults = defaults
-        self.first = first ?? ChatGPTWebViewModel(storeIdentifier: ChatGPTWebPolicy.storeIdentifier)
-        self.second = second ?? ChatGPTWebViewModel(storeIdentifier: ChatGPTWebPolicy.secondaryStoreIdentifier)
-        selected = Slot(rawValue: defaults.string(forKey: selectionKey) ?? "") ?? .first
+
+        if let data = defaults.data(forKey: Self.profilesKey),
+           let stored = try? JSONDecoder().decode([Profile].self, from: data),
+           !stored.isEmpty,
+           Set(stored.map(\.id)).count == stored.count,
+           stored.allSatisfy({ !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            profiles = stored
+        } else if let oldSelection = defaults.string(forKey: Self.legacySelectionKey) {
+            // A pre-release two-profile installation may have WebKit data in the
+            // earlier fixed secondary ID. Retain both only when that version ran.
+            profiles = [
+                Self.defaultProfile,
+                Profile(id: ChatGPTWebPolicy.secondaryStoreIdentifier, name: "Web 2")
+            ]
+            selectedID = oldSelection == "second"
+                ? ChatGPTWebPolicy.secondaryStoreIdentifier : ChatGPTWebPolicy.storeIdentifier
+        } else {
+            profiles = [Self.defaultProfile]
+        }
+
+        let requested = UUID(uuidString: defaults.string(forKey: Self.selectionKey) ?? "")
+        selectedID = requested.flatMap { id in
+            profiles.contains(where: { $0.id == id }) ? id : nil
+        } ?? (defaults.string(forKey: Self.legacySelectionKey) == "second"
+              && profiles.contains(where: { $0.id == ChatGPTWebPolicy.secondaryStoreIdentifier })
+              ? ChatGPTWebPolicy.secondaryStoreIdentifier : profiles[0].id)
+
+        if let first, profiles.contains(where: { $0.id == Self.defaultProfile.id }) {
+            models[Self.defaultProfile.id] = first
+        }
+        if models[selectedID] == nil {
+            models[selectedID] = ChatGPTWebViewModel(storeIdentifier: selectedID)
+        }
     }
 
-    var active: ChatGPTWebViewModel { model(for: selected) }
-
-    func model(for slot: Slot) -> ChatGPTWebViewModel {
-        slot == .first ? first : second
+    var selectedName: String {
+        profiles.first(where: { $0.id == selectedID })?.name ?? "ChatGPT"
     }
 
-    func select(_ slot: Slot) {
-        guard selected != slot else { return }
-        selected = slot
-        defaults.set(slot.rawValue, forKey: selectionKey)
-        // No clearing, network navigation, or authentication action on selection.
+    var active: ChatGPTWebViewModel {
+        model(for: selectedID)
+    }
+
+    func profile(id: UUID) -> Profile? {
+        profiles.first(where: { $0.id == id })
+    }
+
+    func model(for id: UUID) -> ChatGPTWebViewModel {
+        if let existing = models[id] { return existing }
+        let created = ChatGPTWebViewModel(storeIdentifier: id)
+        models[id] = created
+        return created
+    }
+
+    func select(_ id: UUID) {
+        guard !isRemovingProfile, profiles.contains(where: { $0.id == id }), selectedID != id else { return }
+        _ = model(for: id)
+        selectedID = id
+        defaults.set(id.uuidString, forKey: Self.selectionKey)
+        // Switches never navigate, clear cookies or log out other profiles.
+    }
+
+    @discardableResult
+    func addProfile(name: String = "") -> Profile {
+        let rawName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        var serial = 2
+        while profiles.contains(where: { $0.name.caseInsensitiveCompare("Web \(serial)") == .orderedSame }) {
+            serial += 1
+        }
+        let newProfile = Profile(id: UUID(), name: rawName.isEmpty ? "Web \(serial)" : String(rawName.prefix(80)))
+        profiles.append(newProfile)
+        _ = model(for: newProfile.id)
+        persist()
+        select(newProfile.id)
+        managementError = nil
+        return newProfile
+    }
+
+    @discardableResult
+    func renameProfile(id: UUID, to name: String) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let index = profiles.firstIndex(where: { $0.id == id }), !trimmed.isEmpty else {
+            managementError = "Enter a name for the web profile."
+            return false
+        }
+        profiles[index].name = String(trimmed.prefix(80))
+        persist()
+        managementError = nil
+        return true
+    }
+
+    /// Permanent removal is allowed only when another profile can remain.
+    /// A failed WebKit store removal keeps the saved profile for an explicit retry.
+    @discardableResult
+    func removeProfile(id: UUID) async -> Bool {
+        guard !isRemovingProfile else { return false }
+        guard profiles.count > 1, profiles.contains(where: { $0.id == id }) else {
+            managementError = "The last web profile cannot be deleted. Clear its data instead."
+            return false
+        }
+        isRemovingProfile = true
+        defer { isRemovingProfile = false }
+        managementError = nil
+
+        let model = model(for: id)
+        await model.clearWebsiteData()
+        guard !model.isClearing, model.failure == nil, model.webView == nil else {
+            managementError = "Could not stop the profile page. Its data was not deleted; try again."
+            return false
+        }
+
+        // Unmount a selected profile and release its browser before WebKit removes
+        // its named data store. All other models and stores remain untouched.
+        if selectedID == id, let replacement = profiles.first(where: { $0.id != id }) {
+            selectedID = replacement.id
+            _ = model(for: replacement.id)
+            defaults.set(replacement.id.uuidString, forKey: Self.selectionKey)
+        }
+        models.removeValue(forKey: id)
+        await Task.yield()
+        do {
+            try await WKWebsiteDataStore.remove(forIdentifier: id)
+        } catch {
+            managementError = "The page data was cleared, but WebKit could not remove this profile's storage. Try deleting it again."
+            return false
+        }
+        profiles.removeAll(where: { $0.id == id })
+        persist()
+        return true
+    }
+
+    private func persist() {
+        guard let data = try? JSONEncoder().encode(profiles) else { return }
+        defaults.set(data, forKey: Self.profilesKey)
+        defaults.set(selectedID.uuidString, forKey: Self.selectionKey)
     }
 }

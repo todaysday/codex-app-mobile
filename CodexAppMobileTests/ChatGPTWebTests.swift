@@ -4,57 +4,97 @@ import WebKit
 
 final class ChatGPTWebTests: XCTestCase {
     @MainActor
-    func testTwoProfileSwitchKeepsDistinctWebViewsAndSelectionAcrossLaunch() throws {
-        let suite = "ChatGPTWebProfiles.\(UUID().uuidString)"
+    func testProfilesCreatedOnlyOnDemandWithFourStableIndependentStores() throws {
+        let suite = "ChatGPTManagedProfiles.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let first = ChatGPTWebViewModel(storeIdentifier: UUID(), initialURL: URL(string: "about:blank")!)
-        let second = ChatGPTWebViewModel(storeIdentifier: UUID(), initialURL: URL(string: "about:blank")!)
-        let profiles = ChatGPTWebProfiles(defaults: defaults, first: first, second: second)
-        XCTAssertEqual(profiles.selected, .first)
-        let firstView = first.prepareWebView()
-        let secondView = second.prepareWebView()
+        let original = ChatGPTWebViewModel(storeIdentifier: ChatGPTWebPolicy.storeIdentifier,
+                                           initialURL: URL(string: "about:blank")!)
+        let profiles = ChatGPTWebProfiles(defaults: defaults, first: original)
+        XCTAssertEqual(profiles.profiles.count, 1)
+        XCTAssertEqual(profiles.selectedID, ChatGPTWebPolicy.storeIdentifier)
+        XCTAssertTrue(profiles.active === original)
+        let firstView = original.prepareWebView()
+        let second = profiles.addProfile(name: "Work")
+        let third = profiles.addProfile(name: "Personal")
+        let fourth = profiles.addProfile(name: "Research")
+        XCTAssertEqual(profiles.profiles.count, 4)
+        XCTAssertEqual(Set(profiles.profiles.map(\.id)).count, 4)
+        let secondView = profiles.model(for: second.id).prepareWebView()
+        let thirdView = profiles.model(for: third.id).prepareWebView()
+        let fourthView = profiles.model(for: fourth.id).prepareWebView()
         XCTAssertFalse(firstView === secondView)
-        XCTAssertFalse(firstView.configuration.websiteDataStore === secondView.configuration.websiteDataStore)
-        profiles.select(.second)
-        XCTAssertTrue(profiles.active === second)
+        XCTAssertFalse(secondView === thirdView)
+        XCTAssertFalse(thirdView === fourthView)
+        profiles.select(second.id)
         XCTAssertTrue(profiles.active.webView === secondView)
-        XCTAssertNil(firstView.url)
-        profiles.select(.first)
+        profiles.select(fourth.id)
+        XCTAssertTrue(profiles.active.webView === fourthView)
+        profiles.select(ChatGPTWebPolicy.storeIdentifier)
         XCTAssertTrue(profiles.active.webView === firstView)
-        let relaunched = ChatGPTWebProfiles(defaults: defaults, first: first, second: second)
-        XCTAssertEqual(relaunched.selected, .first)
-        profiles.select(.second)
-        XCTAssertEqual(ChatGPTWebProfiles(defaults: defaults, first: first, second: second).selected, .second)
+        XCTAssertTrue(profiles.renameProfile(id: third.id, to: "Second personal"))
+        let relaunched = ChatGPTWebProfiles(defaults: defaults)
+        XCTAssertEqual(relaunched.profiles.count, 4)
+        XCTAssertEqual(relaunched.profile(id: third.id)?.name, "Second personal")
+        XCTAssertEqual(relaunched.selectedID, ChatGPTWebPolicy.storeIdentifier)
+        XCTAssertEqual(relaunched.model(for: second.id).dataStore.identifier, second.id)
     }
 
     @MainActor
-    func testTwoProfilesRetainDistinctSessionsAndScopedResetAcrossRestart() async throws {
-        let firstID = UUID(), secondID = UUID()
-        let first = ChatGPTWebViewModel(storeIdentifier: firstID)
-        let second = ChatGPTWebViewModel(storeIdentifier: secondID)
-        let firstCookie = try XCTUnwrap(HTTPCookie(properties: [
-            .domain: "chatgpt.com", .path: "/", .name: "session-test", .value: "web-account-a",
-            .secure: "TRUE", .expires: Date().addingTimeInterval(600)
-        ]))
-        let secondCookie = try XCTUnwrap(HTTPCookie(properties: [
-            .domain: "chatgpt.com", .path: "/", .name: "session-test", .value: "web-account-b",
-            .secure: "TRUE", .expires: Date().addingTimeInterval(600)
-        ]))
-        await first.dataStore.httpCookieStore.setCookie(firstCookie)
-        await second.dataStore.httpCookieStore.setCookie(secondCookie)
-        let reconstructedA = ChatGPTWebViewModel(storeIdentifier: firstID)
-        let reconstructedB = ChatGPTWebViewModel(storeIdentifier: secondID)
-        let cookiesA = await reconstructedA.dataStore.httpCookieStore.allCookies()
-        let cookiesB = await reconstructedB.dataStore.httpCookieStore.allCookies()
-        XCTAssertEqual(cookiesA.first(where: { $0.name == "session-test" })?.value, "web-account-a")
-        XCTAssertEqual(cookiesB.first(where: { $0.name == "session-test" })?.value, "web-account-b")
-        await first.clearWebsiteData()
-        let clearedA = await reconstructedA.dataStore.httpCookieStore.allCookies()
-        let retainedB = await reconstructedB.dataStore.httpCookieStore.allCookies()
-        XCTAssertFalse(clearedA.contains(where: { $0.name == "session-test" }))
-        XCTAssertEqual(retainedB.first(where: { $0.name == "session-test" })?.value, "web-account-b")
-        await second.clearWebsiteData()
+    func testThreeWebAccountsKeepIndependentCookiesDuringSwitchAndClear() async throws {
+        let suite = "ChatGPTMultipleCookies.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let first = ChatGPTWebViewModel(storeIdentifier: ChatGPTWebPolicy.storeIdentifier)
+        let profiles = ChatGPTWebProfiles(defaults: defaults, first: first)
+        let second = profiles.addProfile(name: "Other account")
+        let third = profiles.addProfile(name: "Third account")
+        let ids = [ChatGPTWebPolicy.storeIdentifier, second.id, third.id]
+        let values = ["account-a", "account-b", "account-c"]
+        for (id, value) in zip(ids, values) {
+            let cookie = try XCTUnwrap(HTTPCookie(properties: [
+                .domain: "chatgpt.com", .path: "/", .name: "session-fixture",
+                .value: value, .secure: "TRUE", .expires: Date().addingTimeInterval(600)
+            ]))
+            await profiles.model(for: id).dataStore.httpCookieStore.setCookie(cookie)
+        }
+        for id in [third.id, second.id, ids[0], third.id] {
+            profiles.select(id)
+            XCTAssertEqual(profiles.selectedID, id)
+        }
+        let restarted = ChatGPTWebProfiles(defaults: defaults)
+        XCTAssertEqual(restarted.selectedID, third.id)
+        for (id, value) in zip(ids, values) {
+            let cookies = await restarted.model(for: id).dataStore.httpCookieStore.allCookies()
+            XCTAssertEqual(cookies.first(where: { $0.name == "session-fixture" })?.value, value)
+        }
+        await restarted.model(for: third.id).clearWebsiteData()
+        let cookiesA = await restarted.model(for: ids[0]).dataStore.httpCookieStore.allCookies()
+        let cookiesB = await restarted.model(for: second.id).dataStore.httpCookieStore.allCookies()
+        let cookiesC = await restarted.model(for: third.id).dataStore.httpCookieStore.allCookies()
+        XCTAssertEqual(cookiesA.first(where: { $0.name == "session-fixture" })?.value, "account-a")
+        XCTAssertEqual(cookiesB.first(where: { $0.name == "session-fixture" })?.value, "account-b")
+        XCTAssertFalse(cookiesC.contains(where: { $0.name == "session-fixture" }))
+        await restarted.model(for: ids[0]).clearWebsiteData()
+        await restarted.model(for: second.id).clearWebsiteData()
+    }
+
+    @MainActor
+    func testExplicitDeleteOnlyRemovesItsOwnProfileAndProtectsLastRemaining() async throws {
+        let suite = "ChatGPTProfileDelete.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let profiles = ChatGPTWebProfiles(defaults: defaults)
+        let extra = profiles.addProfile(name: "Temporary")
+        let survivor = profiles.addProfile(name: "Keep this")
+        XCTAssertTrue(await profiles.removeProfile(id: extra.id))
+        XCTAssertNil(profiles.profile(id: extra.id))
+        XCTAssertNotNil(profiles.profile(id: survivor.id))
+        XCTAssertTrue(await profiles.removeProfile(id: survivor.id))
+        XCTAssertEqual(profiles.profiles.count, 1)
+        XCTAssertFalse(await profiles.removeProfile(id: ChatGPTWebPolicy.storeIdentifier))
+        XCTAssertEqual(profiles.profiles.count, 1)
+        XCTAssertNotNil(profiles.managementError)
     }
 
     func testNavigationAllowsOfficialSitesAndAuthenticationProviders() {
