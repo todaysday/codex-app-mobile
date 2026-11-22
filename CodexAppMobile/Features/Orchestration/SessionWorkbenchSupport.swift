@@ -458,7 +458,60 @@ private struct SSHGitCommandResult {
     let exitCode: Int
 }
 
+struct CodexGitWorktree: Identifiable, Equatable {
+    let path: String
+    let branch: String?
+    let isDetached: Bool
+    let isLocked: Bool
+    var id: String { path }
+}
+
 actor SSHGitService {
+    /// Read-only Git worktree listing: no add/remove/prune operations.
+    func listWorktrees(host: RemoteHost, password: String, workspacePath: String) async throws -> [CodexGitWorktree] {
+        guard host.hasSSHConfiguration else {
+            throw SSHGitServiceError.commandFailed("This Host has no SSH fallback configured.")
+        }
+        let result = try await runWorkspaceCommand(
+            host: host, password: password, workspacePath: workspacePath,
+            command: "git -c color.ui=false worktree list --porcelain", timeoutSeconds: 25
+        )
+        guard result.exitCode == 0 else {
+            throw SSHGitServiceError.commandFailed(
+                Self.bestFailureMessage(output: result.output, exitCode: result.exitCode)
+            )
+        }
+        return Self.parseWorktrees(result.output)
+    }
+
+    static func parseWorktrees(_ output: String) -> [CodexGitWorktree] {
+        var worktrees: [CodexGitWorktree] = []
+        var path: String?
+        var branch: String?
+        var detached = false
+        var locked = false
+        func flush() {
+            guard let path, !path.isEmpty else { return }
+            worktrees.append(.init(path: path, branch: branch, isDetached: detached, isLocked: locked))
+        }
+        for line in output.components(separatedBy: "\n") {
+            if line.isEmpty {
+                flush(); path = nil; branch = nil; detached = false; locked = false
+            } else if line.hasPrefix("worktree ") {
+                path = String(line.dropFirst("worktree ".count))
+            } else if line.hasPrefix("branch ") {
+                let reference = String(line.dropFirst("branch ".count))
+                branch = reference.hasPrefix("refs/heads/") ? String(reference.dropFirst("refs/heads/".count)) : reference
+            } else if line == "detached" {
+                detached = true
+            } else if line.hasPrefix("locked") {
+                locked = true
+            }
+        }
+        flush()
+        return Array(worktrees.prefix(100))
+    }
+
     private static let logger = Logger(
         subsystem: "com.example.CodexAppMobile",
         category: "SSHGitService"

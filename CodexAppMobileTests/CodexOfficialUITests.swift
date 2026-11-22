@@ -199,3 +199,51 @@ final class CodexSubagentCardTests: XCTestCase {
         XCTAssertEqual(tool, "spawnAgent")
     }
 }
+
+
+final class WorkspaceFilesAndWorktreesTests: XCTestCase {
+    func testWorkspacePathsCannotEscapeAndRequireAbsoluteLinuxRoot() {
+        XCTAssertEqual(CodexWorkspacePathPolicy.normalizedRoot("/home/dev/repo/"), "/home/dev/repo")
+        XCTAssertNil(CodexWorkspacePathPolicy.normalizedRoot("relative/path"))
+        XCTAssertEqual(CodexWorkspacePathPolicy.childPath(directory: "/home/dev/repo", name: "src", root: "/home/dev/repo"),
+                       "/home/dev/repo/src")
+        for name in ["..", ".", "../secret", "/etc/passwd", "bad\\name", ""] {
+            XCTAssertNil(CodexWorkspacePathPolicy.childPath(directory: "/home/dev/repo", name: name,
+                                                              root: "/home/dev/repo"), name)
+        }
+        XCTAssertFalse(CodexWorkspacePathPolicy.contains(path: "/home/dev/repo-elsewhere/file", root: "/home/dev/repo"))
+    }
+
+    func testReadOnlyPreviewNeedsReportedBoundedSize() {
+        XCTAssertFalse(CodexWorkspacePathPolicy.canPreview(sizeBytes: nil))
+        XCTAssertFalse(CodexWorkspacePathPolicy.canPreview(sizeBytes: -1))
+        XCTAssertTrue(CodexWorkspacePathPolicy.canPreview(sizeBytes: 42))
+        XCTAssertTrue(CodexWorkspacePathPolicy.canPreview(sizeBytes: 512 * 1024))
+        XCTAssertFalse(CodexWorkspacePathPolicy.canPreview(sizeBytes: 512 * 1024 + 1))
+    }
+
+    func testGitPorcelainWorktreesPreserveDetachedAndLockedMetadata() {
+        let sample = """
+        worktree /srv/repo
+        HEAD 01234567
+        branch refs/heads/main
+
+        worktree /srv/wt/feature
+        HEAD 89abcdef
+        branch refs/heads/feature
+        locked moving
+
+        worktree /srv/wt/review
+        HEAD fedcba98
+        detached
+
+        """
+        let trees = SSHGitService.parseWorktrees(sample)
+        XCTAssertEqual(trees.count, 3)
+        XCTAssertEqual(trees[0].branch, "main")
+        XCTAssertEqual(trees[1].branch, "feature")
+        XCTAssertTrue(trees[1].isLocked)
+        XCTAssertTrue(trees[2].isDetached)
+        XCTAssertNil(trees[2].branch)
+    }
+}

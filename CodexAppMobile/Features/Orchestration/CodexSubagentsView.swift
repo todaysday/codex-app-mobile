@@ -281,3 +281,266 @@ struct CodexSubagentItemCard: View {
         .accessibilityElement(children: .contain)
     }
 }
+
+
+// MARK: - Safe read-only workspace explorer (official fs/* App Server RPCs)
+
+enum CodexWorkspacePathPolicy {
+    static let maxPreviewBytes = 512 * 1024
+
+    static func normalizedRoot(_ path: String) -> String? {
+        guard path.hasPrefix("/"), !path.contains("\u{0}") else { return nil }
+        let clean = (path as NSString).standardizingPath
+        return clean.hasPrefix("/") ? clean : nil
+    }
+
+    static func contains(path: String, root: String) -> Bool {
+        guard let base = normalizedRoot(root), let candidate = normalizedRoot(path) else { return false }
+        return candidate == base || base == "/" || candidate.hasPrefix(base + "/")
+    }
+
+    static func childPath(directory: String, name: String, root: String) -> String? {
+        guard !name.isEmpty, name != ".", name != "..",
+              !name.contains("/"), !name.contains("\\"),
+              !name.contains("\u{0}"), contains(path: directory, root: root) else { return nil }
+        let joined = (directory as NSString).appendingPathComponent(name)
+        return contains(path: joined, root: root) ? joined : nil
+    }
+
+    static func canPreview(sizeBytes: Int?) -> Bool {
+        guard let sizeBytes else { return false }
+        return (0...maxPreviewBytes).contains(sizeBytes)
+    }
+}
+
+struct CodexWorkspaceEntry: Identifiable {
+    let name: String
+    let isDirectory: Bool
+    let isFile: Bool
+    var id: String { name }
+}
+
+struct CodexWorkspacePreview: Identifiable {
+    let path: String
+    let text: String
+    var id: String { path }
+}
+
+struct CodexWorkspaceFilesView: View {
+    @ObservedObject var client: AppServerClient
+    let rootPath: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var directory: String
+    @State private var entries: [CodexWorkspaceEntry] = []
+    @State private var preview: CodexWorkspacePreview?
+    @State private var isLoading = false
+    @State private var hasLoaded = false
+    @State private var errorMessage: String?
+
+    init(client: AppServerClient, rootPath: String) {
+        self.client = client
+        self.rootPath = rootPath
+        _directory = State(initialValue: CodexWorkspacePathPolicy.normalizedRoot(rootPath) ?? rootPath)
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text(directory).font(.caption.monospaced()).textSelection(.enabled)
+                    if directory != CodexWorkspacePathPolicy.normalizedRoot(rootPath) {
+                        Button("Up one folder", systemImage: "arrow.up.to.line") {
+                            let parent = (directory as NSString).deletingLastPathComponent
+                            guard CodexWorkspacePathPolicy.contains(path: parent, root: rootPath) else { return }
+                            directory = parent
+                            Task { await refresh() }
+                        }
+                    }
+                    if isLoading { ProgressView("Loading files…") }
+                    if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
+                }
+                Section("Workspace files") {
+                    ForEach(entries) { entry in
+                        Button {
+                            Task { await open(entry) }
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: entry.isDirectory ? "folder" : "doc.text")
+                                Text(entry.name)
+                                    .lineLimit(2)
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                if entry.isDirectory { Image(systemName: "chevron.right").foregroundStyle(.tertiary) }
+                            }
+                        }
+                    }
+                    if hasLoaded && entries.isEmpty {
+                        Text("No readable entries were returned.").foregroundStyle(.secondary)
+                    }
+                    if entries.count == 200 {
+                        Text("Showing at most 200 items in this folder.").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Files")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .primaryAction) {
+                    Button { Task { await refresh() } } label: { Image(systemName: "arrow.clockwise") }
+                        .disabled(isLoading)
+                }
+            }
+            .sheet(item: $preview) { item in
+                NavigationStack {
+                    ScrollView {
+                        Text(item.text)
+                            .font(.system(.footnote, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                    }
+                    .navigationTitle((item.path as NSString).lastPathComponent)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { preview = nil } } }
+                }
+            }
+            .task { await refresh() }
+        }
+    }
+
+    @MainActor
+    private func refresh() async {
+        guard !isLoading, client.state == .connected else { return }
+        guard CodexWorkspacePathPolicy.contains(path: directory, root: rootPath) else {
+            errorMessage = "The folder is outside this workspace."; return
+        }
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        let requested = directory
+        do {
+            let result = try await client.officialRequest(method: "fs/readDirectory",
+                                                           params: .object(["path": .string(requested)]))
+            guard !Task.isCancelled, directory == requested else { return }
+            let values = result.objectValue?["entries"]?.arrayValue ?? []
+            entries = Array(values.compactMap { item -> CodexWorkspaceEntry? in
+                guard let object = item.objectValue,
+                      let name = object["fileName"]?.stringValue,
+                      CodexWorkspacePathPolicy.childPath(directory: requested, name: name, root: rootPath) != nil else {
+                    return nil
+                }
+                return .init(name: name, isDirectory: object["isDirectory"]?.boolValue ?? false,
+                             isFile: object["isFile"]?.boolValue ?? false)
+            }.prefix(200))
+            hasLoaded = true
+        } catch { errorMessage = client.userFacingMessage(for: error) }
+    }
+
+    @MainActor
+    private func open(_ entry: CodexWorkspaceEntry) async {
+        guard !isLoading, client.state == .connected,
+              let path = CodexWorkspacePathPolicy.childPath(directory: directory, name: entry.name, root: rootPath)
+        else { return }
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            let result = try await client.officialRequest(method: "fs/getMetadata",
+                                                           params: .object(["path": .string(path)]))
+            guard !Task.isCancelled else { return }
+            guard let meta = result.objectValue else { errorMessage = "Invalid file metadata."; return }
+            guard meta["isSymlink"]?.boolValue != true else {
+                errorMessage = "Symlink targets are not followed by this explorer."; return
+            }
+            if meta["isDirectory"]?.boolValue == true {
+                directory = path
+                entries = []
+                hasLoaded = false
+                isLoading = false
+                await refresh()
+                return
+            }
+            guard meta["isFile"]?.boolValue == true else {
+                errorMessage = "This is not a regular file."; return
+            }
+            let size = meta["sizeBytes"]?.intValue
+            guard CodexWorkspacePathPolicy.canPreview(sizeBytes: size) else {
+                errorMessage = size == nil
+                    ? "The server did not provide file size. Refusing an unbounded full-file read."
+                    : "The file exceeds the 512 KiB text-preview limit."
+                return
+            }
+            let file = try await client.officialRequest(method: "fs/readFile",
+                                                        params: .object(["path": .string(path)]))
+            guard !Task.isCancelled, let base64 = file.objectValue?["dataBase64"]?.stringValue,
+                  let data = Data(base64Encoded: base64), data.count <= CodexWorkspacePathPolicy.maxPreviewBytes else {
+                errorMessage = "The file could not be decoded safely."; return
+            }
+            guard let text = String(data: data, encoding: .utf8), !text.contains("\u{0}") else {
+                errorMessage = "Binary files do not have a text preview."; return
+            }
+            preview = .init(path: path, text: text)
+        } catch { errorMessage = client.userFacingMessage(for: error) }
+    }
+}
+
+// MARK: - Read-only worktree discovery through the existing SSH Git service
+
+struct CodexWorktreesView: View {
+    let host: RemoteHost
+    let password: String
+    let workspacePath: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var items: [CodexGitWorktree] = []
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+    private let service = SSHGitService()
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text("Read-only Git worktrees. No worktree is created, removed or switched here.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                    if isLoading { ProgressView("Reading Git worktrees…") }
+                    if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
+                }
+                Section("Worktrees") {
+                    ForEach(items) { item in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(item.branch ?? (item.isDetached ? "Detached HEAD" : "Unknown branch"))
+                                .font(.headline)
+                            Text(item.path).font(.caption.monospaced()).textSelection(.enabled)
+                            if item.isLocked { Label("Locked", systemImage: "lock").font(.caption) }
+                        }
+                    }
+                    if items.isEmpty && !isLoading && errorMessage == nil {
+                        Text("No worktrees returned.").foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Worktrees")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .primaryAction) {
+                    Button { Task { await refresh() } } label: { Image(systemName: "arrow.clockwise") }
+                        .disabled(isLoading)
+                }
+            }
+            .task { await refresh() }
+        }
+    }
+
+    @MainActor
+    private func refresh() async {
+        guard !isLoading, host.hasSSHConfiguration else { return }
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            items = try await service.listWorktrees(host: host, password: password, workspacePath: workspacePath)
+        } catch { errorMessage = error.localizedDescription }
+    }
+}

@@ -110,6 +110,8 @@ struct SessionWorkbenchView: View {
     @State var workspacePendingDeletion: ProjectWorkspace?
     @State var activePendingRequest: AppServerPendingRequest?
     @State var officialThreadPanel: OfficialThreadPanel?
+    @State var isWorkspaceFilesPresented = false
+    @State var isWorktreesPresented = false
     @State var selectedThreadDirectInputAllowed = true
     @State var confirmedThreadName: String?
     @State var sshTranscriptByThread: [String: String] = [:]

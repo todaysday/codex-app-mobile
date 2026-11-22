@@ -42,6 +42,18 @@ extension SessionWorkbenchView {
                     CodexSubagentsView(client: self.appState.appServerClient, rootThreadID: panel.threadID, rootTitle: panel.title)
                 }
             }
+            .sheet(isPresented: self.$isWorkspaceFilesPresented) {
+                if let workspace = self.selectedWorkspace {
+                    CodexWorkspaceFilesView(client: self.appState.appServerClient, rootPath: workspace.remotePath)
+                }
+            }
+            .sheet(isPresented: self.$isWorktreesPresented) {
+                if let workspace = self.selectedWorkspace, self.host.hasSSHConfiguration {
+                    CodexWorktreesView(host: self.host,
+                                       password: self.appState.remoteHostStore.password(for: self.host.id),
+                                       workspacePath: workspace.remotePath)
+                }
+            }
     }
 
     var sideMenu: some View {
@@ -142,6 +154,37 @@ extension SessionWorkbenchView {
                                         cornerRadius: 14,
                                         tint: self.accentGlassTint(light: 0.18, dark: 0.14)
                                     )
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        if self.selectedWorkspace != nil {
+                            HStack(spacing: 8) {
+                                if !self.isSSHTransport {
+                                    Button {
+                                        self.isMenuOpen = false
+                                        self.isWorkspaceFilesPresented = true
+                                    } label: {
+                                        Label("Files", systemImage: "folder")
+                                            .font(.subheadline)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 10)
+                                            .background { self.glassCardBackground(cornerRadius: 12) }
+                                    }
+                                    .disabled(self.appState.appServerClient.state != .connected)
+                                }
+                                if self.host.hasSSHConfiguration {
+                                    Button {
+                                        self.isMenuOpen = false
+                                        self.isWorktreesPresented = true
+                                    } label: {
+                                        Label("Worktrees", systemImage: "point.3.connected.trianglepath.dotted")
+                                            .font(.subheadline)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 10)
+                                            .background { self.glassCardBackground(cornerRadius: 12) }
+                                    }
                                 }
                             }
                             .buttonStyle(.plain)
