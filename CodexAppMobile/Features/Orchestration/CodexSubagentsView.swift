@@ -193,14 +193,13 @@ struct CodexSubagentThreadView: View {
 
     @MainActor
     private func followVisibleThread() async {
+        let isInitialMount = history.scope == nil
         history.prepare(threadID: threadID, generation: client.connectionGeneration)
-        guard client.state == .connected else {
+        guard client.state == .connected, scenePhase == .active || isInitialMount else {
             history.cancelRefresh()
             return
         }
-        // The first history read is needed even while a view is briefly
-        // inactive (e.g. navigation transition or iOS simulator mounting).
-        // Only the periodic polling loop requires an active foreground scene.
+        // Initial navigation can mount an inactive view; later refreshes require the foreground.
         await refresh()
         guard scenePhase == .active else { return }
         while !Task.isCancelled {

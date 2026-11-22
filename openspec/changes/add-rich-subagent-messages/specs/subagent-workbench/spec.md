@@ -117,7 +117,14 @@ AND a later refresh can recover.
 
 ### Requirement: Refresh without controlling child execution
 
-WHILE a child inspector is visible and the scene is active, the client SHALL support manual refresh and bounded periodic refresh for active children without creating or controlling a turn.
+WHEN a connected child inspector first mounts, the client SHALL allow one initial history read during a transient inactive scene. WHILE the inspector is visible and its scene is active, the client SHALL support manual refresh and bounded periodic refresh for active children without creating or controlling a turn. Subsequent automatic history reads SHALL require an active scene.
+
+#### Scenario: Initial inactive mount
+
+GIVEN a connected child inspector has just mounted and has no history scope yet
+WHEN its scene has not become active
+THEN one initial history read loads the existing child
+AND periodic refresh waits until the scene becomes active.
 
 #### Scenario: Active child update
 
@@ -128,7 +135,7 @@ AND no overlapping refresh request is started.
 
 #### Scenario: Inspector exits or app backgrounds
 
-GIVEN automatic refresh is waiting or reading
+GIVEN an already mounted inspector's automatic refresh is waiting or reading
 WHEN the view exits or the scene becomes inactive
 THEN the refresh task is cancelled or suspended
 AND no new automatic history request is started.

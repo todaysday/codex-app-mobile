@@ -107,6 +107,71 @@ final class CodexOfficialUITests: XCTestCase {
         XCTAssertEqual(client.threadRecordsByID["child"]?.canAcceptDirectInput, false)
     }
 
+    @MainActor
+    func testChildInitialInactiveMountReadsOnceAndBackgroundTransitionDoesNotReload() async throws {
+        let client = AppServerClient()
+        client.setStateForTesting(.connected)
+        client.applyNotificationForTesting(method: "turn/started", params: .object([
+            "threadId": .string("parent"), "turn": .object(["id": .string("parent-turn"), "status": .string("inProgress")]),
+        ]))
+        let lifecycle = ScenePhaseFixture()
+        var methods: [String] = []
+        var readPhases: [ScenePhase] = []
+        client.requestOverrideForTesting = { method, params in
+            methods.append(method)
+            XCTAssertEqual(params?["threadId"], .string("child"))
+            if method == "thread/read" {
+                readPhases.append(lifecycle.phase)
+                return .object(["thread": Self.thread("child", directInput: false)])
+            }
+            XCTAssertEqual(method, "thread/turns/list")
+            return .object(["data": .array([.object([
+                "id": .string("child-turn"), "status": .string("inProgress"), "itemsView": .string("full"),
+                "items": .array([.object(["id": .string("reply"), "type": .string("agentMessage"), "text": .string("Working")])]),
+            ])]), "nextCursor": .null])
+        }
+        let view = ScenePhaseHost(lifecycle: lifecycle, content: NavigationStack {
+            CodexSubagentThreadView(client: client, threadID: "child", rootThreadID: "parent", fallback: nil,
+                                   openThread: { _ in }, returnToWorkbench: {})
+        })
+        let (window, previous) = try mount(view)
+        defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKeyAndVisible() }
+        let initialRead = await waitUntil { methods.count >= 2 }
+        XCTAssertTrue(initialRead)
+        XCTAssertEqual(readPhases, [.inactive])
+
+        lifecycle.phase = .active
+        let foregroundRead = await waitUntil { methods.count >= 4 }
+        XCTAssertTrue(foregroundRead)
+        XCTAssertEqual(readPhases, [.inactive, .active])
+        lifecycle.phase = .background
+        let backgroundRendered = await waitUntil { lifecycle.renderedPhase == .background }
+        XCTAssertTrue(backgroundRendered)
+        // Wait only after SwiftUI has applied the new environment, allowing its task restart to run.
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(readPhases, [.inactive, .active])
+        XCTAssertEqual(methods, ["thread/read", "thread/turns/list", "thread/read", "thread/turns/list"])
+        XCTAssertEqual(client.activeTurnID(for: "parent"), "parent-turn")
+        XCTAssertEqual(client.activeTurnID(for: "child"), "child-turn")
+        XCTAssertEqual(client.threadRecordsByID["child"]?.canAcceptDirectInput, false)
+    }
+
+    @MainActor
+    private final class ScenePhaseFixture: ObservableObject {
+        @Published var phase: ScenePhase = .inactive
+        var renderedPhase: ScenePhase?
+    }
+
+    private struct ScenePhaseHost<Content: View>: View {
+        @ObservedObject var lifecycle: ScenePhaseFixture
+        let content: Content
+
+        var body: some View {
+            content.environment(\.scenePhase, lifecycle.phase)
+                .onChange(of: lifecycle.phase, initial: true) { _, phase in lifecycle.renderedPhase = phase }
+        }
+    }
+
     private static func record(status: String = "idle", ephemeral: Bool = false,
                                historyMode: String = "paginated", directInput: Bool = true) -> RemoteThreadRecord {
         RemoteThreadRecord(id: "thread", preview: "Preview", updatedAt: Date(), archived: false,
