@@ -653,11 +653,11 @@ extension AppServerClient {
     static func isUnsupportedSourceKinds(_ error: Error) -> Bool {
         guard case let AppServerClientError.remote(code, message) = error,
               code == -32602 else { return false }
-        let message = message.lowercased()
-        return message.contains("sourcekinds") || message.contains("source_kinds")
-            || message.contains("source kinds") || Self.allThreadSourceKinds.contains(where: { kind in
+        let normalizedMessage = message.lowercased()
+        return normalizedMessage.contains("sourcekinds") || normalizedMessage.contains("source_kinds")
+            || normalizedMessage.contains("source kinds") || Self.allThreadSourceKinds.contains(where: { kind in
                 ["`", "\"", "'"].contains(where: { quote in
-                    message.contains("unknown variant \(quote)\(kind.lowercased())\(quote)")
+                    normalizedMessage.contains("unknown variant \(quote)\(kind.lowercased())\(quote)")
                 })
             })
     }

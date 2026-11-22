@@ -30,8 +30,9 @@ jobs:
       - name: Verify pinned Xcode
         run: |
           test -d "$DEVELOPER_DIR"
-          xcodebuild -version
-          xcodebuild -version | head -n 1 | grep -Fx 'Xcode 26.2'
+          codex_xcode_version="$(xcodebuild -version)"
+          printf '%s\n' "$codex_xcode_version"
+          test "${codex_xcode_version%%$'\n'*}" = 'Xcode 26.2'
 
       - name: Validate repository
         run: make validate
