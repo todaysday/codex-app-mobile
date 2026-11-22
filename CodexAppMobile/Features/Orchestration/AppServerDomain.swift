@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-enum JSONValue: Codable, Equatable, Hashable {
+enum JSONValue: Codable, Equatable, Hashable, Sendable {
     case string(String)
     case number(Double)
     case bool(Bool)
