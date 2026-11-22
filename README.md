@@ -4,7 +4,7 @@ A standalone SwiftUI iPhone app for your **existing Codex App Server**, with a s
 
 This project extends [shuto-S/codex-app-mobile](https://github.com/shuto-S/codex-app-mobile), preserving its Codex interface and SSH fallback. [Akuma1tko/ChatGPT-WebView](https://github.com/Akuma1tko/ChatGPT-WebView) is the minimal web-companion reference. Exact source revisions and reuse decisions are in [UPSTREAM.md](docs/UPSTREAM.md).
 
-**Delivery status:** the native companion, official Codex protocol additions, and unsigned build workflow are in `todaysday/codex-app-mobile`. GitHub Actions compilation, downloadable IPA and physical-device acceptance are recorded separately; source validation alone does not establish those gates. See the [MVP tasks](openspec/changes/add-chatgpt-web-companion/tasks.md), [official-controls tasks](openspec/changes/add-official-codex-controls/tasks.md), and [device acceptance](docs/DEVICE_ACCEPTANCE.md) for recorded status.
+**Delivery status:** [macOS CI #6 passed](https://github.com/todaysday/codex-app-mobile/actions/runs/45036419930): **196 XCTest cases**, **8 Python tooling tests**, and the unsigned iPhoneOS Release build. [Download `CodexMobile-unsigned-6`](https://github.com/todaysday/codex-app-mobile/actions/runs/45036419930/artifacts/14759824839) — version **1.0 (6)**, arm64, iOS 18.0+. The downloaded IPA, checksum, and source provenance were independently verified. [Verification record](docs/VERIFICATION.md); [physical-device acceptance remains pending](docs/DEVICE_ACCEPTANCE.md).
 
 ## What is included
 
@@ -130,6 +130,7 @@ The application uses SwiftUI, Swift Concurrency, WebKit, URLSession, and the ups
 
 ## Specifications and verification
 
+- [Verified build, test results, artifact identity, and remaining live gates](docs/VERIFICATION.md)
 - [Project context](openspec/project.md)
 - [MVP proposal](openspec/changes/add-chatgpt-web-companion/proposal.md), [design](openspec/changes/add-chatgpt-web-companion/design.md), and [tasks](openspec/changes/add-chatgpt-web-companion/tasks.md)
 - Capability specifications: [app shell](openspec/changes/add-chatgpt-web-companion/specs/app-shell/spec.md), [isolated ChatGPT Web](openspec/changes/add-chatgpt-web-companion/specs/isolated-chatgpt-web/spec.md), [existing Codex connection](openspec/changes/add-chatgpt-web-companion/specs/secure-existing-codex/spec.md), [unsigned distribution](openspec/changes/add-chatgpt-web-companion/specs/unsigned-ios-distribution/spec.md)

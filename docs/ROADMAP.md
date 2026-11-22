@@ -18,7 +18,7 @@ The baseline is official stable [Codex 0.171.0](https://github.com/openai/codex/
 | Requests | Current command/human choices, permission grant/deny scope, secret/other/blocking input | [Task 9](../openspec/changes/add-official-codex-controls/tasks.md) |
 | Live workbench | Structured server plan and aggregate turn diff; retain upstream SSH Git/diff | [Task 10](../openspec/changes/add-official-codex-controls/tasks.md) |
 
-These controls now have native UI and protocol implementations. Source work is complete; the linked checklists separately record macOS tests and live-device acceptance. [Thread-scoped drafts](../openspec/changes/fix-thread-scoped-composer/proposal.md) also preserve input and immutable submission targets across navigation and reconnects.
+These controls now have native UI and protocol implementations. [Hosted Xcode verification passed](VERIFICATION.md), including the complete 196-case XCTest suite and an independently checked unsigned IPA. The linked checklists retain separate live-server and physical-device acceptance gates. [Thread-scoped drafts](../openspec/changes/fix-thread-scoped-composer/proposal.md) also preserve input and immutable submission targets across navigation and reconnects.
 
 ## Additional supported foundations
 

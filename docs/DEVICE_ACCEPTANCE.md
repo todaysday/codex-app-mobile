@@ -1,6 +1,6 @@
 # Physical device acceptance
 
-This checklist is the release gate for the MVP. All results start as **pending**. A successful local static check, simulator test, or unsigned build does not establish that the user's login method or SideStore works on the requested iPhone.
+This checklist is the release gate for the MVP. Device and live-server results remain **pending** until actually performed; the verified build and download are recorded below. A successful local static check, simulator test, or unsigned build does not establish that the user's login method or SideStore works on the requested iPhone.
 
 Run this against one identified IPA. Do not put passwords, service tokens, cookies, authorization callback URLs, private chats, or account recovery information in the record.
 
@@ -8,10 +8,10 @@ Run this against one identified IPA. Do not put passwords, service tokens, cooki
 
 | Field | Value |
 | --- | --- |
-| Source commit | Pending |
-| GitHub Actions run URL | Pending |
-| IPA SHA-256 | Pending |
-| App version/build and bundle ID | Pending; expected bundle ID `dev.todaysday.codexmobile` |
+| Source commit | `0a1f8b107324faed81acd7ca76858b7bd97c7c8a` |
+| GitHub Actions run URL | [Successful run #6](https://github.com/todaysday/codex-app-mobile/actions/runs/45036419930) |
+| IPA SHA-256 | `ad1f6f51734c3497f107c5daae46c2675a065add9f66f5adc0ad4eb3973b5673` |
+| App version/build and bundle ID | 1.0 (6); `dev.todaysday.codexmobile`; arm64; minimum iOS 18.0 |
 | iPhone model | Pending |
 | iOS version | First requested target: 18.7.8; actual version pending |
 | SideStore version and installation method | Pending |
@@ -30,7 +30,7 @@ Run this against one identified IPA. Do not put passwords, service tokens, cooki
 
 | ID | Action | Expected result | Status / evidence |
 | --- | --- | --- | --- |
-| D01 | Download the Actions artifact ZIP and extract the unsigned IPA. Compare its checksum with `SHA256SUMS`. | The exact artifact and commit are identified; the IPA is nonempty and contains the built app. | Pending |
+| D01 | Download the Actions artifact ZIP and extract the unsigned IPA. Compare its checksum with `SHA256SUMS`. | The exact artifact and commit are identified; the IPA is nonempty and contains the built app. | Passed for the downloaded CI artifact; see [verification](VERIFICATION.md). |
 | D02 | Use SideStore → My Apps → `+` to sign and install the IPA as a native app. Do not import it into LiveContainer. | Codex Mobile appears as its own application and launches alongside official ChatGPT. | Pending |
 | D03 | Launch from a terminated state. | Codex opens by default, with the expected app identity and independent icon. | Pending |
 | D04 | Configure the existing WSS endpoint and the authentication mode required by its proxy. | The existing App Server connects; the process/account on the VPS is unchanged. | Pending |
@@ -63,6 +63,25 @@ Record these when the associated capability is used. Do not infer support from t
 | W05 | If embedded OAuth fails, use the explicit Open in Browser action. | The official website opens safely. This verifies only the fallback and leaves D08 failing/pending. | Pending |
 | W06 | Background the app during a Codex turn and resume it. | The app recovers according to iOS limits; no promise of an uninterrupted background socket is inferred. | Pending |
 
+## Official Codex controls and composer acceptance
+
+Run these against the same identified IPA and the existing App Server. Record the actual server version first. Optional methods that the server does not implement should be recorded as unavailable, with ordinary chat still usable. Use a designated test thread for intentional goal and history changes.
+
+| ID | Action | Expected result | Status / evidence |
+| --- | --- | --- | --- |
+| C01 | Find a saved CLI/desktop-created thread in the correct workspace; inspect history beyond the first list/history page when available. | The thread and retained messages are present without creating a replacement session. | Pending |
+| C02 | Reconnect while a turn is running, then send a follow-up and request Stop. | The existing turn is restored, the follow-up steers that turn, and Stop stays pending until the server reports its terminal state. | Pending |
+| C03 | Open Thread Controls, add a goal with a budget, pause/resume it, remove the budget, and confirm Clear Goal. | The server confirms each mutation; objective, status, budget, and counters match its state. Opening the panel alone changes no goal. | Pending |
+| C04 | Open Subagents on a parent that has real child sessions; inspect a child and return to the parent. | Reported relationships, roles, status, and messages appear. The parent stays selected, and inspection creates no session or turn. | Pending |
+| C05 | Inspect a thread that explicitly reports that it rejects direct input. | Messages remain readable; sending and steering are disabled. | Pending |
+| C06 | Observe a task that reports a plan, multiple diff updates, and token usage. | Plan statuses update; the diff represents the latest aggregate snapshot; latest and cumulative tokens are distinct. | Pending |
+| C07 | Rename a test thread and request compaction while it is idle. | The confirmed name persists; compaction remains busy until a terminal event or a later authoritative idle refresh. | Pending |
+| C08 | Select a real turn in a compatible persistent test thread and confirm conversation-history revert. | That turn and later history disappear after reload; repository file changes remain. A busy or incompatible thread cannot be reverted. | Pending |
+| C09 | Exercise command, human-checkpoint, permission, and user-input requests that the actual server supports. Resolve a request from another connected client. | Choices, scope, and secret-input behavior match the request. Resolved or replaced requests cannot be submitted from a stale sheet. | Pending |
+| C10 | Type distinct drafts in two threads, including context tokens; navigate between them and the ChatGPT tab. | Each draft and its tokens return only in their original host/workspace/thread scope. | Pending |
+| C11 | Submit a prompt while connecting, then select another thread or host before the request finishes. | The request retains its original target and settings or reports the connection change. It does not send to the newly selected thread or change the user's newer selection. | Pending |
+| C12 | Cause a recoverable submission failure, type newer input, and use Add to draft for the saved failed input. | Both inputs and their context tokens remain recoverable in the original scope; nothing is sent automatically. | Pending |
+
 ## Failure record
 
 For a failed gate, record the test ID, commit, device/iOS, short reproducible steps, exact safe error text, expected result, and observed result. Remove private content and any token-bearing URLs from screenshots. Keep failed and unperformed gates distinct.
@@ -71,7 +90,7 @@ If the intended OAuth method is blocked inside WKWebView, retain the functioning
 
 ## Acceptance decision
 
-- [ ] A successful macOS build and artifact have been recorded.
+- [x] A successful macOS build and artifact have been recorded.
 - [ ] D01–D19 have evidence and pass, or a documented explicit product decision changes an applicable requirement.
 - [ ] The exact intended ChatGPT login method and required web feature have passed on the requested device.
 - [ ] The actual standalone SideStore installation and signature refresh have passed.

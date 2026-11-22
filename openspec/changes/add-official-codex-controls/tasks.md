@@ -12,7 +12,7 @@ The user's 2026-11-22 authorization permits this work now; the previous P1/P2-af
 - [x] 8. Add rename, manual compaction, and confirmed idle persistent-history revert with correct history reload.
 - [x] 9. Complete current command, permission, and user-input request semantics and resolution handling.
 - [x] 10. Add structured turn plan/diff state and surface verified model metadata in the workbench.
-- [ ] 11. Add and run meaningful protocol/lifecycle fixture tests, keep upstream tests, and pass macOS compilation.
+- [x] 11. Add and run meaningful protocol/lifecycle fixture tests, keep upstream tests, and pass macOS compilation.
 - [x] 12. Update the research report, capability status, and actual user-facing controls to match the finished implementation.
 - [ ] 13. Verify the final IPA against the actual existing VPS version, a CLI/desktop-created session, a child session, and relevant control actions; record remaining device gates separately.
 
@@ -20,3 +20,7 @@ The user's 2026-11-22 authorization permits this work now; the previous P1/P2-af
 
 A source implementation or fixture pass is not a live compatibility pass. Unsupported server methods remain clearly unavailable. No task authorizes replacing the user's server, logging out its account, starting another daemon, or changing ChatGPT Web credentials.
 
+
+## Hosted verification
+
+Code commit `0a1f8b107324faed81acd7ca76858b7bd97c7c8a` passed [macOS CI #6](https://github.com/todaysday/codex-app-mobile/actions/runs/45036419930): 196 XCTest cases, 8 Python tooling tests, and the unsigned iPhoneOS Release build. The downloaded IPA and provenance were independently checked. See [VERIFICATION.md](../../../docs/VERIFICATION.md). Physical-device and actual-VPS acceptance remain open.
