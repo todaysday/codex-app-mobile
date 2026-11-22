@@ -4,9 +4,11 @@ import SwiftUI
 @MainActor
 final class RemoteHostStore: ObservableObject {
     @Published private(set) var hosts: [RemoteHost] = []
+    @Published private(set) var credentialError = ""
 
     private let defaults: UserDefaults
     private let credentialStore: HostCredentialStore
+    private let appServerCredentialStore: AppServerCredentialStore
 
     private let hostsKey = "codex.remote.hosts.v1"
     private let legacyRemoteHostsKey = "codex.remote.connections.v1"
@@ -14,23 +16,51 @@ final class RemoteHostStore: ObservableObject {
 
     init(
         defaults: UserDefaults = .standard,
-        credentialStore: HostCredentialStore = KeychainHostCredentialStore()
+        credentialStore: HostCredentialStore = KeychainHostCredentialStore(),
+        appServerCredentialStore: AppServerCredentialStore = KeychainAppServerCredentialStore()
     ) {
         self.defaults = defaults
         self.credentialStore = credentialStore
+        self.appServerCredentialStore = appServerCredentialStore
         self.loadHosts()
     }
 
-    func upsert(hostID: UUID?, draft: RemoteHostDraft) {
+    @discardableResult
+    func upsert(hostID: UUID?, draft: RemoteHostDraft) -> Bool {
+        self.credentialError = ""
+        guard draft.isValid else {
+            self.credentialError = "Check the host details and secure connection settings."
+            return false
+        }
+        let recordID = hostID ?? UUID()
+        let existingAuthentication = self.hosts.first { $0.id == recordID }?.appServerAuthentication ?? .none
+        let authentication: AppServerAuthentication
+        do {
+            let credentials: AppServerCredentials
+            if let supplied = draft.appServerCredentials {
+                credentials = supplied
+            } else if existingAuthentication == .none {
+                credentials = .empty
+            } else {
+                credentials = try self.appServerCredentialStore.read(for: recordID)
+            }
+            _ = try AppServerConnectionSecurity.request(
+                endpoint: draft.resolvedAppServerURL,
+                credentials: credentials,
+                expectedAuthentication: draft.appServerCredentials == nil ? existingAuthentication : credentials.authentication
+            )
+            authentication = credentials.authentication
+            if draft.appServerCredentials != nil {
+                try self.appServerCredentialStore.save(credentials, for: recordID)
+            }
+        } catch {
+            self.credentialError = "Could not validate or save connection credentials. The host was not changed. Edit the host and check its credentials."
+            return false
+        }
         let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedHost = draft.host.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedUser = draft.username.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedAppServerHost = draft.appServerHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedAppServerHost = trimmedAppServerHost.isEmpty ? trimmedHost : trimmedAppServerHost
-        let resolvedAppServerURL = RemoteHost.defaultAppServerURL(
-            host: resolvedAppServerHost,
-            port: draft.appServerPort
-        )
+        let resolvedAppServerURL = draft.resolvedAppServerURL
         var updatedHosts = self.hosts
 
         if let hostID,
@@ -41,17 +71,20 @@ final class RemoteHostStore: ObservableObject {
             hostRecord.sshPort = draft.sshPort
             hostRecord.username = trimmedUser
             hostRecord.appServerURL = resolvedAppServerURL
+            hostRecord.appServerAuthentication = authentication
             hostRecord.preferredTransport = draft.preferredTransport
             hostRecord.updatedAt = Date()
             updatedHosts[index] = hostRecord
             self.credentialStore.save(password: draft.password, for: hostID)
         } else {
             let hostRecord = RemoteHost(
+                id: recordID,
                 name: trimmedName,
                 host: trimmedHost,
                 sshPort: draft.sshPort,
                 username: trimmedUser,
                 appServerURL: resolvedAppServerURL,
+                appServerAuthentication: authentication,
                 preferredTransport: draft.preferredTransport
             )
             updatedHosts.append(hostRecord)
@@ -59,11 +92,28 @@ final class RemoteHostStore: ObservableObject {
         }
 
         self.replaceHosts(updatedHosts, persist: true)
+        return true
     }
 
-    func delete(hostID: UUID) {
+    @discardableResult
+    func delete(hostID: UUID) -> Bool {
+        self.credentialError = ""
+        do {
+            try self.appServerCredentialStore.delete(for: hostID)
+        } catch {
+            self.credentialError = "Could not remove connection credentials from Keychain. The host was kept."
+            return false
+        }
         self.replaceHosts(self.hosts.filter { $0.id != hostID }, persist: true)
         self.credentialStore.deletePassword(for: hostID)
+        return true
+    }
+
+    func appServerCredentials(for hostID: UUID) throws -> AppServerCredentials {
+        let credentials = try self.appServerCredentialStore.read(for: hostID)
+        let expected = self.hosts.first { $0.id == hostID }?.appServerAuthentication ?? .none
+        // Missing secrets must preserve the chosen mode so the editor asks for re-entry.
+        return credentials.authentication == expected ? credentials : AppServerCredentials(authentication: expected)
     }
 
     func password(for hostID: UUID) -> String {
@@ -432,7 +482,7 @@ final class AppState: ObservableObject {
     }
 
     func removeHost(hostID: UUID) {
-        self.remoteHostStore.delete(hostID: hostID)
+        guard self.remoteHostStore.delete(hostID: hostID) else { return }
         self.hostSessionStore.removeSession(hostID: hostID)
         self.projectStore.workspaces
             .filter { $0.hostID == hostID }

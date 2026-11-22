@@ -1,7 +1,15 @@
 # Third-Party Licenses
 
-This project uses the following dependencies through Swift Package Manager.  
-The list is generated from `CodexAppMobile.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved` and each local checkout's `LICENSE` / `NOTICE` files.
+This project retains CodexAppMobile and its Swift Package Manager dependencies, and acknowledges the ChatGPT-WebView companion reference. Exact inspected upstream revisions are recorded in [docs/UPSTREAM.md](docs/UPSTREAM.md).
+
+## Application and web companion
+
+| Component | Copyright | License text | Role |
+| --- | --- | --- | --- |
+| [CodexAppMobile](https://github.com/shuto-S/codex-app-mobile) | Copyright (c) 2026 shuto | [LICENSE](LICENSE), MIT | Base app, Codex interface, orchestration, SSH terminal, tests, and assets. |
+| [ChatGPT-WebView](https://github.com/Akuma1tko/ChatGPT-WebView) | Copyright (c) 2025 Akuma1tko | [docs/licenses/ChatGPT-WebView-MIT.txt](docs/licenses/ChatGPT-WebView-MIT.txt), MIT | Minimal WKWebView companion reference; no donor IPA or second app entrypoint is embedded. |
+
+The dependency inventory below is inherited from the inspected upstream revision and its `CodexAppMobile.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`. Distribution packaging also verifies resolved checkout revisions and includes their actual `LICENSE` / `NOTICE` files inside the unsigned app.
 
 ## Dependencies
 

@@ -765,21 +765,8 @@ extension AppServerClient {
     }
 
     static func resolveAppServerURL(raw: String) throws -> URL {
-        let normalizedRaw = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedRaw.isEmpty else {
-            throw AppServerClientError.invalidURL
-        }
-
-        guard let components = URLComponents(string: normalizedRaw),
-              let scheme = components.scheme?.lowercased(),
-              scheme == "ws" || scheme == "wss"
-        else {
-            throw AppServerClientError.invalidURL
-        }
-
-        guard let endpointHost = components.host?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !endpointHost.isEmpty
-        else {
+        guard let url = try? AppServerConnectionSecurity.endpoint(raw),
+              let endpointHost = url.host else {
             throw AppServerClientError.invalidURL
         }
 
@@ -787,10 +774,7 @@ extension AppServerClient {
             throw AppServerClientError.invalidEndpointHost(endpointHost)
         }
 
-        guard let resolvedURL = components.url else {
-            throw AppServerClientError.invalidURL
-        }
-        return resolvedURL
+        return url
     }
 
     static func versionComponents(_ rawVersion: String) -> [Int] {

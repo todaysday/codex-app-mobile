@@ -19,7 +19,7 @@
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>CFBundleDisplayName</key>
-	<string>shot star</string>
+	<string>Codex Mobile</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
@@ -29,5 +29,11 @@
 	</dict>
 	<key>UILaunchScreen</key>
 	<dict/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Use the microphone when you choose a voice feature in ChatGPT Web.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Use the camera when you choose to capture a photo or video in ChatGPT Web.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Connect to a Codex or SSH server on your local network.</string>
 </dict>
 </plist>

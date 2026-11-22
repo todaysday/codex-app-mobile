@@ -51,6 +51,7 @@ final class AppServerClient: ObservableObject {
     )
 
     private let session: URLSession
+    private let credentialStore: AppServerCredentialStore
     private let router = AppServerMessageRouter()
 
     private var webSocketTask: URLSessionWebSocketTask?
@@ -83,8 +84,12 @@ final class AppServerClient: ObservableObject {
     private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
     #endif
 
-    init(session: URLSession = .shared) {
+    init(
+        session: URLSession = AppServerConnectionSecurity.makeSession(),
+        credentialStore: AppServerCredentialStore = KeychainAppServerCredentialStore()
+    ) {
         self.session = session
+        self.credentialStore = credentialStore
     }
 
     private func transition(
@@ -738,6 +743,11 @@ final class AppServerClient: ObservableObject {
 
     private func openConnection(to host: RemoteHost, resetReconnectAttempts: Bool) async throws {
         let url = try Self.resolveAppServerURL(raw: host.appServerURL)
+        let request = try AppServerConnectionSecurity.request(
+            endpoint: url.absoluteString,
+            credentials: self.credentialStore.read(for: host.id),
+            expectedAuthentication: host.appServerAuthentication
+        )
 
         self.reconnectTask?.cancel()
         self.teardownConnection(closeCode: .normalClosure)
@@ -760,7 +770,7 @@ final class AppServerClient: ObservableObject {
         self.resetDiagnosticsForNewConnection()
         self.diagnostics.reconnectAttemptCount = self.reconnectAttempts
 
-        let task = self.session.webSocketTask(with: url)
+        let task = self.session.webSocketTask(with: request)
         self.webSocketTask = task
         self.hasReceivedMessageOnCurrentConnection = false
         task.resume()

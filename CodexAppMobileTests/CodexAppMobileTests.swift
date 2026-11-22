@@ -106,7 +106,7 @@ final class CodexAppMobileTests: XCTestCase {
         defaults.set(encoded, forKey: "ssh.connection.profiles.v1")
 
         let credentialStore = InMemoryHostCredentialStore()
-        let store = RemoteHostStore(defaults: defaults, credentialStore: credentialStore)
+        let store = RemoteHostStore(defaults: defaults, credentialStore: credentialStore, appServerCredentialStore: TestAppServerCredentialStore())
 
         XCTAssertEqual(store.hosts.count, 1)
         XCTAssertEqual(store.hosts[0].id, legacyProfile.id)
@@ -161,7 +161,7 @@ final class CodexAppMobileTests: XCTestCase {
         }
 
         let credentialStore = InMemoryHostCredentialStore()
-        let store = RemoteHostStore(defaults: defaults, credentialStore: credentialStore)
+        let store = RemoteHostStore(defaults: defaults, credentialStore: credentialStore, appServerCredentialStore: TestAppServerCredentialStore())
         store.upsert(
             hostID: nil,
             draft: RemoteHostDraft(
@@ -217,7 +217,7 @@ final class CodexAppMobileTests: XCTestCase {
         }
 
         let credentialStore = InMemoryHostCredentialStore()
-        let store = RemoteHostStore(defaults: defaults, credentialStore: credentialStore)
+        let store = RemoteHostStore(defaults: defaults, credentialStore: credentialStore, appServerCredentialStore: TestAppServerCredentialStore())
         store.upsert(
             hostID: nil,
             draft: RemoteHostDraft(
@@ -251,7 +251,7 @@ final class CodexAppMobileTests: XCTestCase {
         XCTAssertEqual(store.hosts.count, 1)
         XCTAssertFalse(store.hosts.contains(where: { $0.id == removedHostID }))
 
-        let reloaded = RemoteHostStore(defaults: defaults, credentialStore: credentialStore)
+        let reloaded = RemoteHostStore(defaults: defaults, credentialStore: credentialStore, appServerCredentialStore: TestAppServerCredentialStore())
         XCTAssertEqual(reloaded.hosts.count, 1)
         XCTAssertFalse(reloaded.hosts.contains(where: { $0.id == removedHostID }))
     }
@@ -425,7 +425,7 @@ final class CodexAppMobileTests: XCTestCase {
         }
 
         let credentialStore = InMemoryHostCredentialStore()
-        let remoteHostStore = RemoteHostStore(defaults: defaults, credentialStore: credentialStore)
+        let remoteHostStore = RemoteHostStore(defaults: defaults, credentialStore: credentialStore, appServerCredentialStore: TestAppServerCredentialStore())
         let projectStore = ProjectStore(defaults: defaults)
         let threadBookmarkStore = ThreadBookmarkStore(defaults: defaults)
         let hostSessionStore = HostSessionStore(defaults: defaults)

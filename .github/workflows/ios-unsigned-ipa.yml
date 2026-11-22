@@ -1,0 +1,57 @@
+name: iOS unsigned IPA
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      # The upstream UI uses iOS 26 APIs with iOS 18 runtime fallbacks.
+      # https://github.com/actions/runner-images/blob/main/images/macos/macos-15-Readme.md
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify pinned Xcode
+        run: |
+          test -d "$DEVELOPER_DIR"
+          xcodebuild -version
+          xcodebuild -version | head -n 1 | grep -Fx 'Xcode 26.2'
+
+      - name: Validate repository
+        run: make validate
+
+      - name: Inspect, test, and build unsigned IPA
+        run: make build-ipa
+
+      - name: Upload unsigned IPA and build provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: CodexMobile-unsigned-${{ github.run_number }}
+          path: .build/distribution/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build and test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-diagnostics-${{ github.run_number }}-${{ github.run_attempt }}
+          path: .build/ci/
+          if-no-files-found: ignore
+          retention-days: 14

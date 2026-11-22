@@ -11,7 +11,6 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 project_root="$(cd "${script_dir}/.." && pwd)"
 project_path="${project_root}/CodexAppMobile.xcodeproj"
 scheme="CodexAppMobile"
-bundle_id="com.example.CodexAppMobile"
 derived_data_path="${project_root}/.build/DerivedData"
 device_name="${IOS_DEVICE_NAME:-CodexAppMobile iPhone 17}"
 device_type_identifier="${IOS_DEVICE_TYPE_IDENTIFIER:-com.apple.CoreSimulator.SimDeviceType.iPhone-17}"
@@ -136,4 +135,5 @@ if [[ ! -d "${app_path}" ]]; then
 fi
 
 xcrun simctl install "${device_udid}" "${app_path}"
+bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${app_path}/Info.plist")"
 xcrun simctl launch --terminate-running-process --stdout=/dev/null --stderr=/dev/null "${device_udid}" "${bundle_id}"

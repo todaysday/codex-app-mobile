@@ -91,6 +91,7 @@ struct RemoteHost: Identifiable, Codable, Equatable {
     var sshPort: Int
     var username: String
     var appServerURL: String
+    var appServerAuthentication: AppServerAuthentication
     var preferredTransport: TransportKind
     var createdAt: Date
     var updatedAt: Date
@@ -102,6 +103,7 @@ struct RemoteHost: Identifiable, Codable, Equatable {
         sshPort: Int,
         username: String,
         appServerURL: String,
+        appServerAuthentication: AppServerAuthentication = .none,
         preferredTransport: TransportKind = .ssh,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
@@ -112,6 +114,7 @@ struct RemoteHost: Identifiable, Codable, Equatable {
         self.sshPort = sshPort
         self.username = username
         self.appServerURL = appServerURL
+        self.appServerAuthentication = appServerAuthentication
         self.preferredTransport = preferredTransport
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -129,6 +132,7 @@ struct RemoteHost: Identifiable, Codable, Equatable {
         case sshPort
         case username
         case appServerURL
+        case appServerAuthentication
         case preferredTransport
         case createdAt
         case updatedAt
@@ -143,6 +147,9 @@ struct RemoteHost: Identifiable, Codable, Equatable {
         self.username = try container.decode(String.self, forKey: .username)
         self.appServerURL = try container.decodeIfPresent(String.self, forKey: .appServerURL)
             ?? Self.defaultAppServerURL(host: self.host)
+        self.appServerAuthentication = try container.decodeIfPresent(
+            AppServerAuthentication.self, forKey: .appServerAuthentication
+        ) ?? .none
         self.preferredTransport = try container.decodeIfPresent(TransportKind.self, forKey: .preferredTransport) ?? .ssh
         self.createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         self.updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
@@ -156,6 +163,7 @@ struct RemoteHost: Identifiable, Codable, Equatable {
         try container.encode(self.sshPort, forKey: .sshPort)
         try container.encode(self.username, forKey: .username)
         try container.encode(self.appServerURL, forKey: .appServerURL)
+        try container.encode(self.appServerAuthentication, forKey: .appServerAuthentication)
         try container.encode(self.preferredTransport, forKey: .preferredTransport)
         try container.encode(self.createdAt, forKey: .createdAt)
         try container.encode(self.updatedAt, forKey: .updatedAt)
@@ -171,6 +179,18 @@ struct RemoteHostDraft {
     var appServerPort: Int
     var preferredTransport: TransportKind
     var password: String
+    var appServerEndpoint: String
+    var appServerCredentials: AppServerCredentials?
+
+    var resolvedAppServerURL: String {
+        let endpoint = self.appServerEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !endpoint.isEmpty { return endpoint }
+        let serverHost = self.appServerHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        return RemoteHost.defaultAppServerURL(
+            host: serverHost.isEmpty ? self.host : serverHost,
+            port: self.appServerPort
+        )
+    }
 
     static let empty = RemoteHostDraft(
         name: "",
@@ -191,27 +211,19 @@ struct RemoteHostDraft {
         guard !trimmedName.isEmpty,
               !trimmedHost.isEmpty,
               !trimmedUser.isEmpty,
-              (1...65535).contains(self.sshPort),
-              (1...65535).contains(self.appServerPort)
+              (1...65535).contains(self.sshPort)
         else {
             return false
         }
 
-        let trimmedAppServerHost = self.appServerHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedAppServerHost.contains("://") {
-            return false
+        if self.appServerEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard (1...65535).contains(self.appServerPort),
+                  !self.appServerHost.contains("://") else { return false }
         }
-
-        let endpointHost = trimmedAppServerHost.isEmpty ? trimmedHost : trimmedAppServerHost
-        let endpoint = RemoteHost.defaultAppServerURL(host: endpointHost, port: self.appServerPort)
-        guard let url = URL(string: endpoint),
-              let scheme = url.scheme?.lowercased(),
-              scheme == "ws" || scheme == "wss"
-        else {
-            return false
-        }
-
-        return true
+        return (try? AppServerConnectionSecurity.request(
+            endpoint: self.resolvedAppServerURL,
+            credentials: self.appServerCredentials ?? .empty
+        )) != nil
     }
 
     init(
@@ -222,7 +234,9 @@ struct RemoteHostDraft {
         appServerHost: String,
         appServerPort: Int,
         preferredTransport: TransportKind,
-        password: String
+        password: String,
+        appServerEndpoint: String = "",
+        appServerCredentials: AppServerCredentials? = nil
     ) {
         self.name = name
         self.host = host
@@ -232,6 +246,8 @@ struct RemoteHostDraft {
         self.appServerPort = appServerPort
         self.preferredTransport = preferredTransport
         self.password = password
+        self.appServerEndpoint = appServerEndpoint
+        self.appServerCredentials = appServerCredentials
     }
 
     init(host: RemoteHost, password: String) {
@@ -249,6 +265,8 @@ struct RemoteHostDraft {
         }
         self.preferredTransport = host.preferredTransport
         self.password = password
+        self.appServerEndpoint = host.appServerURL
+        self.appServerCredentials = nil
     }
 }
 

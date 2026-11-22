@@ -15,6 +15,7 @@ private class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
 @main
 struct CodexAppMobileApp: App {
     @StateObject private var appState = AppState()
+    @StateObject private var navigation = AppNavigationState()
     @Environment(\.scenePhase) private var scenePhase
 
     private let notificationDelegate = NotificationDelegate()
@@ -29,11 +30,14 @@ struct CodexAppMobileApp: App {
         WindowGroup {
             AppRootView()
                 .environmentObject(self.appState)
+                .environmentObject(self.navigation)
                 .onAppear {
+                    self.navigation.isSceneActive = self.scenePhase == .active
                     self.installTurnCompletionNotifier()
                 }
         }
         .onChange(of: self.scenePhase) {
+            self.navigation.isSceneActive = self.scenePhase == .active
             switch self.scenePhase {
             case .background:
                 self.appState.appServerClient.beginBackgroundProcessingIfNeeded()
@@ -48,14 +52,16 @@ struct CodexAppMobileApp: App {
     private func installTurnCompletionNotifier() {
         guard self.appState.appServerClient.onTurnCompleted == nil else { return }
 
-        self.appState.appServerClient.onTurnCompleted = { [weak appState] threadID, status, responseSnippet in
-            guard let appState else { return }
+        self.appState.appServerClient.onTurnCompleted = { [weak appState, weak navigation] threadID, status, responseSnippet in
+            guard let appState, let navigation else { return }
             let normalizedStatus = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             guard normalizedStatus == "completed" else { return }
 
-            // Skip notification if this thread is currently selected (user is viewing it).
-            let isCurrentlyOpen = appState.hostSessionStore.sessions.contains { $0.selectedThreadID == threadID }
-            guard !isCurrentlyOpen else { return }
+            // A selected Codex thread is not visible while the user is in ChatGPT or Settings.
+            let isCurrentlyOpen = appState.hostSessionStore.sessions.contains {
+                $0.hostID == appState.selectedHostID && $0.selectedThreadID == threadID
+            }
+            guard navigation.shouldNotifyCompletion(isSelectedThread: isCurrentlyOpen) else { return }
 
             // Resolve a human-readable title from the thread bookmark.
             let threadTitle: String = {
@@ -119,6 +125,7 @@ struct CodexAppMobileApp: App {
 }
 
 private struct AppRootView: View {
+    @StateObject private var chatGPT = ChatGPTWebViewModel()
     @State private var isShowingSplash = true
     @State private var iconScale: CGFloat = 0.84
     @State private var iconOpacity = 0.0
@@ -128,7 +135,7 @@ private struct AppRootView: View {
 
     var body: some View {
         ZStack {
-            ContentView()
+            AppShellView(chatGPT: chatGPT)
 
             if self.isShowingSplash {
                 LaunchSplashView(
@@ -198,7 +205,7 @@ private struct LaunchSplashView: View {
                         .opacity(self.iconOpacity)
                 }
 
-                Text("shot star")
+                Text("Codex Mobile")
                     .font(.headline)
                     .foregroundStyle(Color.white.opacity(self.iconOpacity))
                     .offset(y: self.titleOffset)

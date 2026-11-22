@@ -151,6 +151,10 @@ struct HostsView: View {
             Button(L10n.text("Delete"), role: .destructive) {
                 self.appState.removeHost(hostID: host.id)
                 self.hostPendingDeletion = nil
+                if !self.remoteHostStore.credentialError.isEmpty {
+                    self.loadingErrorMessage = self.remoteHostStore.credentialError
+                    self.isPresentingLoadingError = true
+                }
             }
         } message: { host in
             Text(L10n.format("Delete \"%@\"? This cannot be undone.", host.name))
@@ -158,10 +162,12 @@ struct HostsView: View {
         .sheet(item: self.$editorContext) { context in
             RemoteHostEditorView(
                 host: context.host,
-                initialPassword: context.initialPassword
+                initialPassword: context.initialPassword,
+                initialServerCredentials: context.initialServerCredentials
             ) { draft in
-                self.remoteHostStore.upsert(hostID: context.host?.id, draft: draft)
+                guard self.remoteHostStore.upsert(hostID: context.host?.id, draft: draft) else { return false }
                 self.appState.cleanupSessionOrphans()
+                return true
             }
         }
     }
@@ -190,10 +196,16 @@ struct HostsView: View {
     }
 
     private func presentHostEditor(for host: RemoteHost) {
-        self.editorContext = HostEditorContext(
-            host: host,
-            initialPassword: self.remoteHostStore.password(for: host.id)
-        )
+        do {
+            self.editorContext = HostEditorContext(
+                host: host,
+                initialPassword: self.remoteHostStore.password(for: host.id),
+                initialServerCredentials: try self.remoteHostStore.appServerCredentials(for: host.id)
+            )
+        } catch {
+            self.loadingErrorMessage = "Could not read the connection credentials from Keychain. Try again after unlocking the device."
+            self.isPresentingLoadingError = true
+        }
     }
 
     private func launchTerminal(for host: RemoteHost) {
@@ -307,12 +319,13 @@ private struct HostEditorContext: Identifiable {
     let id = UUID()
     let host: RemoteHost?
     let initialPassword: String
+    var initialServerCredentials: AppServerCredentials = .empty
 }
 
 struct RemoteHostEditorView: View {
     let host: RemoteHost?
     let initialPassword: String
-    let onSave: (RemoteHostDraft) -> Void
+    let onSave: (RemoteHostDraft) -> Bool
 
     @Environment(\.dismiss) private var dismiss
 
@@ -323,8 +336,17 @@ struct RemoteHostEditorView: View {
     @State private var appServerHost: String
     @State private var appServerPortText: String
     @State private var password: String
+    @State private var appServerEndpoint: String
+    @State private var serverCredentials: AppServerCredentials
+    @State private var preferredTransport: TransportKind
+    @State private var saveFailed = false
 
-    init(host: RemoteHost?, initialPassword: String, onSave: @escaping (RemoteHostDraft) -> Void) {
+    init(
+        host: RemoteHost?,
+        initialPassword: String,
+        initialServerCredentials: AppServerCredentials = .empty,
+        onSave: @escaping (RemoteHostDraft) -> Bool
+    ) {
         self.host = host
         self.initialPassword = initialPassword
         self.onSave = onSave
@@ -343,14 +365,17 @@ struct RemoteHostEditorView: View {
         _appServerHost = State(initialValue: initialDraft.appServerHost)
         _appServerPortText = State(initialValue: String(initialDraft.appServerPort))
         _password = State(initialValue: initialDraft.password)
+        _appServerEndpoint = State(initialValue: initialDraft.appServerEndpoint)
+        _serverCredentials = State(initialValue: initialServerCredentials)
+        _preferredTransport = State(initialValue: host?.preferredTransport ?? .appServerWS)
     }
 
     private var parsedSSHPort: Int {
-        Int(self.sshPortText) ?? 22
+        Int(self.sshPortText) ?? 0
     }
 
     private var parsedAppServerPort: Int {
-        Int(self.appServerPortText) ?? 8080
+        Int(self.appServerPortText) ?? 0
     }
 
     private var draft: RemoteHostDraft {
@@ -361,8 +386,10 @@ struct RemoteHostEditorView: View {
             username: self.username,
             appServerHost: self.appServerHost,
             appServerPort: self.parsedAppServerPort,
-            preferredTransport: .appServerWS,
-            password: self.password
+            preferredTransport: self.preferredTransport,
+            password: self.password,
+            appServerEndpoint: self.appServerEndpoint,
+            appServerCredentials: self.serverCredentials
         )
     }
 
@@ -381,12 +408,53 @@ struct RemoteHostEditorView: View {
                         .autocorrectionDisabled(true)
                 }
 
-                Section(L10n.text("App Server")) {
-                    TextField(L10n.text("Host (default: Basic Host)"), text: self.$appServerHost)
+                Section {
+                    TextField("wss://codex.example.com/path", text: self.$appServerEndpoint)
+                        .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled(true)
-                    TextField(L10n.text("Port"), text: self.$appServerPortText)
-                        .keyboardType(.numberPad)
+                        .accessibilityLabel("App Server WebSocket URL")
+                    if self.appServerEndpoint.isEmpty {
+                        TextField(L10n.text("Host (default: Basic Host)"), text: self.$appServerHost)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled(true)
+                        TextField(L10n.text("Port"), text: self.$appServerPortText)
+                            .keyboardType(.numberPad)
+                    }
+                    Picker("Preferred connection", selection: self.$preferredTransport) {
+                        ForEach(TransportKind.allCases) { kind in
+                            Text(kind.displayName).tag(kind)
+                        }
+                    }
+                } header: {
+                    Text(L10n.text("App Server"))
+                } footer: {
+                    Text("Connect to the app-server already running on your VPS. Use WSS for encrypted access. Legacy host/port connections use WS and require a private network; release builds keep iOS transport protections enabled.")
+                }
+
+                Section {
+                    Picker("Authentication", selection: self.$serverCredentials.authentication) {
+                        ForEach(AppServerAuthentication.allCases) { authentication in
+                            Text(authentication.title).tag(authentication)
+                        }
+                    }
+                    if self.serverCredentials.authentication == .bearer {
+                        SecureField("Bearer token", text: self.$serverCredentials.bearerToken)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    }
+                    if self.serverCredentials.authentication == .cloudflareAccess {
+                        SecureField("Service token client ID", text: self.$serverCredentials.clientID)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        SecureField("Service token client secret", text: self.$serverCredentials.clientSecret)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    }
+                } header: {
+                    Text("Connection credentials")
+                } footer: {
+                    Text("Tokens are saved in this app's Keychain and sent only to your WSS endpoint. Your Codex account remains on the VPS.")
                 }
 
                 Section(L10n.text("SSH")) {
@@ -407,12 +475,20 @@ struct RemoteHostEditorView: View {
 
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(L10n.text("Save")) {
-                        self.onSave(self.draft)
-                        self.dismiss()
+                        if self.onSave(self.draft) {
+                            self.dismiss()
+                        } else {
+                            self.saveFailed = true
+                        }
                     }
                     .disabled(!self.draft.isValid)
                     .codexActionButtonStyle()
                 }
+            }
+            .alert("Could not save host", isPresented: self.$saveFailed) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Your host settings were kept unchanged. Check the endpoint and connection credentials, unlock the device, and try again.")
             }
         }
     }

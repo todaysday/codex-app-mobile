@@ -34,6 +34,20 @@
 		A1B2C3D4E5F6010000000225 /* SessionWorkbenchExecutionActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6010000000124 /* SessionWorkbenchExecutionActions.swift */; };
 		A1B2C3D4E5F6010000000226 /* LegacySSHProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6010000000125 /* LegacySSHProfile.swift */; };
 		A1B2C3D4E5F6010000000227 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6010000000128 /* Localizable.xcstrings */; };
+		19937AC699AF815618A962C3 /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E7381772D2A73E79EE2B8D5 /* AppShellView.swift */; };
+		7823003C18FA3EF8647C0E1E /* AppSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB1C58975B57264333776EB7 /* AppSettingsView.swift */; };
+		731FEC640563ED7062AEF060 /* ChatGPTWebViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 427AD64EB11CB15520483EA6 /* ChatGPTWebViewModel.swift */; };
+		2203080CF32F2FF4B3314FCD /* ChatGPTWebDelegates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71583605CC5302EB16B25DCD /* ChatGPTWebDelegates.swift */; };
+		9AAB4F79E06F49F308EAFD00 /* ChatGPTWebPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B8E3C0DF43704E522F91BA8 /* ChatGPTWebPolicy.swift */; };
+		9FBADCE9C0781F2CB4DD6384 /* ChatGPTWebScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A3B5FD1FD7CD1591958AB1F /* ChatGPTWebScreen.swift */; };
+		8D5E06873144F936BC51FF30 /* ChatGPTWebSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5566199358DD73821032B01 /* ChatGPTWebSettingsView.swift */; };
+		2DF8B44931BAA22E4FA54B07 /* ChatGPTPageQuiescer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BB14694374C9202882C1FA9 /* ChatGPTPageQuiescer.swift */; };
+		3E1273642B34B52418C3B55A /* AppServerConnectionSecurity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13C4B060281B87975D62292D /* AppServerConnectionSecurity.swift */; };
+		FC9C29647980D1B39519EAC0 /* AppNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDEA1033B5CB10A799179AA /* AppNavigationTests.swift */; };
+		514E1B2D1350A4BF0A4867E2 /* ChatGPTWebTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45725D620F1D02538933ABB /* ChatGPTWebTests.swift */; };
+		C58B495A368A9650CCB42ABF /* AppServerConnectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCA9572EF491134EB158410A /* AppServerConnectionTests.swift */; };
+		3C641DD5B58995DFF16C1F3A /* Attribution in Resources */ = {isa = PBXBuildFile; fileRef = 0389DE4A4DE8028E230C843C /* Attribution */; };
+		4B13706978C3088E6BCD97D2 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 0EE02BAD0E548ADE9F12E1B1 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -75,6 +89,20 @@
 		A1B2C3D4E5F6010000000126 /* Info.Debug.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.Debug.plist; sourceTree = "<group>"; };
 		A1B2C3D4E5F6010000000127 /* Info.Release.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.Release.plist; sourceTree = "<group>"; };
 		A1B2C3D4E5F6010000000128 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		9E7381772D2A73E79EE2B8D5 /* AppShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/AppShellView.swift; sourceTree = "<group>"; };
+		EB1C58975B57264333776EB7 /* AppSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/AppSettingsView.swift; sourceTree = "<group>"; };
+		427AD64EB11CB15520483EA6 /* ChatGPTWebViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ChatGPTWeb/ChatGPTWebViewModel.swift; sourceTree = "<group>"; };
+		71583605CC5302EB16B25DCD /* ChatGPTWebDelegates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ChatGPTWeb/ChatGPTWebDelegates.swift; sourceTree = "<group>"; };
+		5B8E3C0DF43704E522F91BA8 /* ChatGPTWebPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ChatGPTWeb/ChatGPTWebPolicy.swift; sourceTree = "<group>"; };
+		4A3B5FD1FD7CD1591958AB1F /* ChatGPTWebScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ChatGPTWeb/ChatGPTWebScreen.swift; sourceTree = "<group>"; };
+		F5566199358DD73821032B01 /* ChatGPTWebSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ChatGPTWeb/ChatGPTWebSettingsView.swift; sourceTree = "<group>"; };
+		0BB14694374C9202882C1FA9 /* ChatGPTPageQuiescer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/ChatGPTWeb/ChatGPTPageQuiescer.swift; sourceTree = "<group>"; };
+		13C4B060281B87975D62292D /* AppServerConnectionSecurity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Orchestration/AppServerConnectionSecurity.swift; sourceTree = "<group>"; };
+		1BDEA1033B5CB10A799179AA /* AppNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppNavigationTests.swift; sourceTree = "<group>"; };
+		E45725D620F1D02538933ABB /* ChatGPTWebTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTWebTests.swift; sourceTree = "<group>"; };
+		CCA9572EF491134EB158410A /* AppServerConnectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServerConnectionTests.swift; sourceTree = "<group>"; };
+		0389DE4A4DE8028E230C843C /* Attribution */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources/Attribution; sourceTree = "<group>"; };
+		0EE02BAD0E548ADE9F12E1B1 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -119,6 +147,17 @@
 		A1B2C3D4E5F6010000000007 /* CodexAppMobile */ = {
 			isa = PBXGroup;
 				children = (
+				9E7381772D2A73E79EE2B8D5 /* AppShellView.swift */,
+				EB1C58975B57264333776EB7 /* AppSettingsView.swift */,
+				427AD64EB11CB15520483EA6 /* ChatGPTWebViewModel.swift */,
+				71583605CC5302EB16B25DCD /* ChatGPTWebDelegates.swift */,
+				5B8E3C0DF43704E522F91BA8 /* ChatGPTWebPolicy.swift */,
+				4A3B5FD1FD7CD1591958AB1F /* ChatGPTWebScreen.swift */,
+				F5566199358DD73821032B01 /* ChatGPTWebSettingsView.swift */,
+				0BB14694374C9202882C1FA9 /* ChatGPTPageQuiescer.swift */,
+				13C4B060281B87975D62292D /* AppServerConnectionSecurity.swift */,
+				0389DE4A4DE8028E230C843C /* Attribution */,
+				0EE02BAD0E548ADE9F12E1B1 /* PrivacyInfo.xcprivacy */,
 					A1B2C3D4E5F6010000000101 /* CodexAppMobileApp.swift */,
 					A1B2C3D4E5F6010000000102 /* ContentView.swift */,
 					A1B2C3D4E5F6010000000121 /* CodexUIStyle.swift */,
@@ -151,6 +190,9 @@
 		A1B2C3D4E5F6010000000008 /* CodexAppMobileTests */ = {
 			isa = PBXGroup;
 			children = (
+				1BDEA1033B5CB10A799179AA /* AppNavigationTests.swift */,
+				E45725D620F1D02538933ABB /* ChatGPTWebTests.swift */,
+				CCA9572EF491134EB158410A /* AppServerConnectionTests.swift */,
 				A1B2C3D4E5F6010000000103 /* CodexAppMobileTests.swift */,
 			);
 			path = CodexAppMobileTests;
@@ -252,6 +294,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3C641DD5B58995DFF16C1F3A /* Attribution in Resources */,
+				4B13706978C3088E6BCD97D2 /* PrivacyInfo.xcprivacy in Resources */,
 				A1B2C3D4E5F6010000000208 /* Assets.xcassets in Resources */,
 				A1B2C3D4E5F6010000000227 /* Localizable.xcstrings in Resources */,
 			);
@@ -271,6 +315,15 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 				files = (
+				19937AC699AF815618A962C3 /* AppShellView.swift in Sources */,
+				7823003C18FA3EF8647C0E1E /* AppSettingsView.swift in Sources */,
+				731FEC640563ED7062AEF060 /* ChatGPTWebViewModel.swift in Sources */,
+				2203080CF32F2FF4B3314FCD /* ChatGPTWebDelegates.swift in Sources */,
+				9AAB4F79E06F49F308EAFD00 /* ChatGPTWebPolicy.swift in Sources */,
+				9FBADCE9C0781F2CB4DD6384 /* ChatGPTWebScreen.swift in Sources */,
+				8D5E06873144F936BC51FF30 /* ChatGPTWebSettingsView.swift in Sources */,
+				2DF8B44931BAA22E4FA54B07 /* ChatGPTPageQuiescer.swift in Sources */,
+				3E1273642B34B52418C3B55A /* AppServerConnectionSecurity.swift in Sources */,
 					A1B2C3D4E5F6010000000201 /* CodexAppMobileApp.swift in Sources */,
 					A1B2C3D4E5F6010000000202 /* ContentView.swift in Sources */,
 					A1B2C3D4E5F6010000000222 /* CodexUIStyle.swift in Sources */,
@@ -299,6 +352,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FC9C29647980D1B39519EAC0 /* AppNavigationTests.swift in Sources */,
+				514E1B2D1350A4BF0A4867E2 /* ChatGPTWebTests.swift in Sources */,
+				C58B495A368A9650CCB42ABF /* AppServerConnectionTests.swift in Sources */,
 				A1B2C3D4E5F6010000000203 /* CodexAppMobileTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -336,7 +392,7 @@
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				DEVELOPMENT_TEAM = R8R4GA36NK;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -377,7 +433,7 @@
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				DEVELOPMENT_TEAM = R8R4GA36NK;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -410,7 +466,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.CodexAppMobile;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.todaysday.codexmobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 6.0;
@@ -433,7 +489,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.CodexAppMobile;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.todaysday.codexmobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -455,7 +511,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.CodexAppMobileTests;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.todaysday.codexmobile.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 6.0;
@@ -477,7 +533,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.CodexAppMobileTests;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.todaysday.codexmobile.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_COMPILATION_MODE = wholemodule;
